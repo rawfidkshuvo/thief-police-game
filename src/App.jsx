@@ -73,14 +73,14 @@ const ROLES = {
     points: 6,
     icon: Skull,
     color: "bg-red-600",
-    textColor: "text-red-400",
+    textColor: "text-red-500",
   },
   THIEF: {
     name: "Thief",
     points: 4,
     icon: Footprints,
-    color: "bg-gray-600",
-    textColor: "text-gray-400",
+    color: "bg-red-600",
+    textColor: "text-red-300",
   },
 };
 
@@ -961,11 +961,11 @@ export default function ThiefPoliceGame() {
                   Mission
                 </div>
                 <div className="text-2xl font-bold mb-2">
-                  Find the{" "}
+                  Find{" "}
                   <span
                     className={
                       gameState.roundTarget === "THIEF"
-                        ? "text-slate-300"
+                        ? "text-red-300"
                         : "text-red-500"
                     }
                   >
@@ -1037,12 +1037,12 @@ export default function ThiefPoliceGame() {
                                 relative p-4 rounded-xl border-2 flex flex-col items-center justify-center aspect-[3/4] transition-all
                                 ${
                                   isMe
-                                    ? "bg-slate-800 shadow-[0_0_20px_rgba(6,182,212,0.4)] border-cyan-400 ring-2 ring-cyan-400/30 transform scale-105 z-10"
+                                    ? "bg-slate-800 shadow-[0_0_20px_rgba(6,182,212,0.4)] border-green-400 ring-2 ring-cyan-400/30 transform scale-105 z-10"
                                     : "bg-slate-800 border-slate-700"
                                 }
                                 ${
                                   canSelect
-                                    ? "cursor-pointer hover:scale-105 border-blue-400 bg-blue-900/20 shadow-[0_0_15px_rgba(59,130,246,0.5)]"
+                                    ? "cursor-pointer hover:scale-105 border-red-400 bg-red-900/20 shadow-[0_0_15px_rgba(59,130,246,0.5)]"
                                     : ""
                                 }
                             `}
@@ -1293,3 +1293,4 @@ export default function ThiefPoliceGame() {
     <div className="text-white text-center p-10">Loading Game Resources...</div>
   );
 }
+//fixed some color issues
