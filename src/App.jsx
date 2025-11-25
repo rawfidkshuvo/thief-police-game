@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import {
   getAuth,
@@ -14,6 +14,7 @@ import {
   updateDoc,
   onSnapshot,
   arrayUnion,
+  arrayRemove,
 } from "firebase/firestore";
 import {
   Crown,
@@ -26,13 +27,16 @@ import {
   Play,
   LogOut,
   X,
-  Bot, // Icon for Bots
+  Bot,
   HelpCircle,
   AlertTriangle,
+  CheckCircle,
+  RotateCcw,
+  Trash2,
+  Settings,
 } from "lucide-react";
 
 // --- Firebase Config ---
-// Using the config from your provided file
 const firebaseConfig = {
   apiKey: "AIzaSyDf86JHBvY9Y1B1x8QDbJkASmlANouEvX0",
   authDomain: "card-games-28729.firebaseapp.com",
@@ -46,10 +50,9 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Unique App ID for this game
-const GAME_APP_ID = "thief-police-v2-bots";
+const GAME_APP_ID = "thief-police-v4-refined";
 
-// --- Game Constants ---
+// --- Constants ---
 const ROLES = {
   KING: {
     name: "King",
@@ -81,7 +84,6 @@ const ROLES = {
   },
 };
 
-const ROUND_OPTIONS = [25, 50, 75, 100];
 const BOT_NAMES = [
   "Terminator",
   "RoboCop",
@@ -93,7 +95,7 @@ const BOT_NAMES = [
   "GLaDOS",
 ];
 
-// --- Helper Functions ---
+// --- Helpers ---
 const shuffle = (array) => {
   let currentIndex = array.length,
     randomIndex;
@@ -108,18 +110,112 @@ const shuffle = (array) => {
   return array;
 };
 
+// --- Sub-Components ---
+
+const LeaveConfirmModal = ({ onConfirm, onCancel }) => (
+  <div className="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-4">
+    <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 max-w-sm w-full text-center shadow-2xl">
+      <h3 className="text-xl font-bold text-white mb-2">Leave Game?</h3>
+      <p className="text-slate-400 mb-6 text-sm">
+        Are you sure you want to leave? You will be removed from the room.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          onClick={onCancel}
+          className="bg-slate-700 hover:bg-slate-600 text-white py-3 rounded font-bold"
+        >
+          No, Stay
+        </button>
+        <button
+          onClick={onConfirm}
+          className="bg-red-600 hover:bg-red-500 text-white py-3 rounded font-bold"
+        >
+          Yes, Leave
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+// --- Particle/Confetti Component ---
+const Confetti = ({ type = "gold" }) => {
+  const [particles, setParticles] = useState([]);
+
+  useEffect(() => {
+    const colors =
+      type === "gold"
+        ? ["#FFD700", "#FFA500", "#FFFF00", "#B8860B"]
+        : ["#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF"];
+
+    const count = 50;
+    const newParticles = [];
+    for (let i = 0; i < count; i++) {
+      newParticles.push({
+        id: i,
+        x: Math.random() * 100, // vw
+        y: -10, // start above
+        color: colors[Math.floor(Math.random() * colors.length)],
+        delay: Math.random() * 0.5,
+        duration: 1 + Math.random() * 2,
+        left: Math.random() * 100,
+      });
+    }
+    setParticles(newParticles);
+  }, [type]);
+
+  return (
+    <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+      {particles.map((p) => (
+        <div
+          key={p.id}
+          className="absolute w-2 h-2 rounded-full opacity-80 animate-fall"
+          style={{
+            left: `${p.left}%`,
+            backgroundColor: p.color,
+            animationDuration: `${p.duration}s`,
+            animationDelay: `${p.delay}s`,
+            top: "-10px",
+          }}
+        />
+      ))}
+      <style>{`
+        @keyframes fall {
+          0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+          100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+        }
+        .animate-fall {
+          animation-name: fall;
+          animation-timing-function: linear;
+          animation-fill-mode: forwards;
+        }
+      `}</style>
+    </div>
+  );
+};
+
 // --- Main Component ---
 export default function ThiefPoliceGame() {
   const [user, setUser] = useState(null);
-  const [view, setView] = useState("menu"); // menu, lobby, game
+  const [view, setView] = useState("menu");
   const [playerName, setPlayerName] = useState("");
   const [roomCode, setRoomCode] = useState("");
   const [roomId, setRoomId] = useState(null);
   const [gameState, setGameState] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [selectedRounds, setSelectedRounds] = useState(25);
   const [showScoreboard, setShowScoreboard] = useState(false);
+
+  // Lobby Rounds State
+  const [lobbyRounds, setLobbyRounds] = useState(25);
+  const [roundsError, setRoundsError] = useState("");
+
+  // New State for confirmation modal
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+
+  // Celebration States
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [showKingEffect, setShowKingEffect] = useState(false);
+  const [shakeScreen, setShakeScreen] = useState(false);
 
   // --- Auth & Sync ---
   useEffect(() => {
@@ -151,59 +247,133 @@ export default function ThiefPoliceGame() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setGameState({ id: docSnap.id, ...data });
-        if (data.status === "playing" || data.status === "finished")
+
+        // Sync local rounds state for host editing visual
+        if (data.maxRounds && view === "lobby") {
+          // We only update if we aren't currently editing (focus check difficult here)
+          // Simpler: Just sync when view changes or initially.
+          // For now, let's allow local state to drift only when user types.
+        }
+
+        // Ensure removed players are redirected
+        const amIInRoom = data.players.some((p) => p.id === user.uid);
+        if (!amIInRoom) {
+          setRoomId(null);
+          setView("menu");
+          setError("You have left or were removed from the room.");
+          return;
+        }
+
+        if (data.status === "playing" || data.status === "finished") {
           setView("game");
-        else setView("lobby");
+        } else {
+          setView("lobby");
+          setShowScoreboard(false);
+        }
       } else {
         setRoomId(null);
         setView("menu");
-        setError("Room closed or does not exist.");
+        setError("Room closed.");
       }
     });
     return () => unsubscribe();
-  }, [roomId, user]);
+  }, [roomId, user, view]); // Added view to deps to help sync
 
-  // --- Bot AI Logic (Host Brain) ---
+  // --- Effects Logic ---
   useEffect(() => {
-    // 1. Only Host runs logic
+    if (!gameState || !user) return;
+
+    const me = gameState.players.find((p) => p.id === user.uid);
+    if (!me) return;
+
+    const gameInstance = gameState.gameInstanceId || "default";
+    const roundKey = `${gameState.id}-${gameInstance}-${gameState.currentRound}`;
+
+    // 1. King Celebration (Personal)
+    if (gameState.turnState === "GUESSING" && me.currentRole === "KING") {
+      const key = `king-${roundKey}`;
+      if (!sessionStorage.getItem(key)) {
+        setShowKingEffect(true);
+        setTimeout(() => setShowKingEffect(false), 3000);
+        sessionStorage.setItem(key, "true");
+      }
+    }
+
+    // 2. Result Celebrations (Role Based)
+    if (gameState.turnState === "RESULT") {
+      const key = `result-${roundKey}`;
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, "true");
+
+        const lastHistory =
+          gameState.roundHistory[gameState.roundHistory.length - 1];
+        if (!lastHistory) return;
+
+        const policeWon = lastHistory.winner === "Police";
+        const amIPolice = me.currentRole === "POLICE";
+        const amITarget = me.currentRole === lastHistory.target;
+
+        if (policeWon) {
+          if (amIPolice) {
+            setShowConfetti(true);
+            setTimeout(() => setShowConfetti(false), 4000);
+          } else if (amITarget) {
+            setShakeScreen(true);
+            setTimeout(() => setShakeScreen(false), 500);
+          }
+        } else {
+          if (amIPolice) {
+            setShakeScreen(true);
+            setTimeout(() => setShakeScreen(false), 500);
+          }
+        }
+      }
+    }
+
+    // 3. Auto Open Scoreboard on Finish
+    if (gameState.status === "finished") {
+      setShowScoreboard(true);
+    }
+  }, [gameState, user]);
+
+  // --- Bot AI & Host Logic ---
+  useEffect(() => {
     if (!gameState || !user || gameState.hostId !== user.uid) return;
 
-    // 2. Only run during guessing phase
-    if (gameState.turnState !== "GUESSING") return;
-
-    // 3. Find Police
-    const policePlayer = gameState.players.find(
-      (p) => p.currentRole === "POLICE"
-    );
-
-    // 4. If Police is a BOT
-    if (policePlayer && policePlayer.isBot) {
-      const timer = setTimeout(() => {
-        // AI Strategy: Guess anyone who isn't self and isn't King
-        const validTargets = gameState.players.filter(
-          (p) => p.id !== policePlayer.id && p.currentRole !== "KING"
-        );
-
-        // Random Pick
-        const randomTarget =
-          validTargets[Math.floor(Math.random() * validTargets.length)];
-
-        if (randomTarget) {
-          handlePoliceGuess(randomTarget.id);
-        }
-      }, 2500); // 2.5s delay for realism
-
-      return () => clearTimeout(timer);
+    // 1. Bot Guessing Logic
+    if (gameState.turnState === "GUESSING") {
+      const policePlayer = gameState.players.find(
+        (p) => p.currentRole === "POLICE"
+      );
+      if (policePlayer && policePlayer.isBot) {
+        const timer = setTimeout(() => {
+          const validTargets = gameState.players.filter(
+            (p) => p.id !== policePlayer.id && p.currentRole !== "KING"
+          );
+          const randomTarget =
+            validTargets[Math.floor(Math.random() * validTargets.length)];
+          if (randomTarget) handlePoliceGuess(randomTarget.id);
+        }, 2500);
+        return () => clearTimeout(timer);
+      }
     }
-  }, [gameState?.turnState, gameState?.currentRound]);
 
-  // --- Room Actions ---
+    // 2. Auto-Next Round Logic
+    if (gameState.turnState === "RESULT") {
+      const humanPlayers = gameState.players.filter((p) => !p.isBot);
+      const readyCount = gameState.readyPlayers?.length || 0;
+
+      if (readyCount >= humanPlayers.length && humanPlayers.length > 0) {
+        setTimeout(() => executeNextRound(), 500);
+      }
+    }
+  }, [gameState?.turnState, gameState?.readyPlayers?.length]);
+
+  // --- Actions ---
   const createRoom = async () => {
     if (!user || !playerName.trim()) return setError("Enter nickname.");
     setLoading(true);
     const newRoomId = Math.random().toString(36).substring(2, 6).toUpperCase();
-
-    // Ensure unique ID for public data path
     const roomRef = doc(
       db,
       "artifacts",
@@ -216,8 +386,9 @@ export default function ThiefPoliceGame() {
 
     const roomData = {
       hostId: user.uid,
+      gameInstanceId: Date.now(),
       maxPlayers: 4,
-      maxRounds: parseInt(selectedRounds),
+      maxRounds: 25, // Default
       currentRound: 0,
       status: "lobby",
       players: [
@@ -231,6 +402,8 @@ export default function ThiefPoliceGame() {
         },
       ],
       roundHistory: [],
+      readyPlayers: [],
+      gameReadyPlayers: [],
       turnState: "IDLE",
       roundTarget: null,
     };
@@ -238,8 +411,8 @@ export default function ThiefPoliceGame() {
     try {
       await setDoc(roomRef, roomData);
       setRoomId(newRoomId);
+      setLobbyRounds(25);
     } catch (e) {
-      console.error(e);
       setError("Failed to create room.");
     }
     setLoading(false);
@@ -258,13 +431,11 @@ export default function ThiefPoliceGame() {
       "rooms",
       roomCode
     );
-
     try {
       const snap = await getDoc(roomRef);
       if (!snap.exists()) throw new Error("Room not found.");
       const data = snap.data();
-      if (data.players.length >= 4) throw new Error("Room full (Max 4).");
-      if (data.status !== "lobby") throw new Error("Game in progress.");
+      if (data.players.length >= 4) throw new Error("Room full.");
 
       const exists = data.players.find((p) => p.id === user.uid);
       if (!exists) {
@@ -286,51 +457,106 @@ export default function ThiefPoliceGame() {
     setLoading(false);
   };
 
-  const addBot = async () => {
-    if (!gameState || gameState.hostId !== user.uid) return;
-    if (gameState.players.length >= 4) return;
+  const leaveRoom = async () => {
+    if (!roomId || !user) return;
+    try {
+      const roomRef = doc(
+        db,
+        "artifacts",
+        GAME_APP_ID,
+        "public",
+        "data",
+        "rooms",
+        roomId
+      );
+      const docSnap = await getDoc(roomRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const updatedPlayers = data.players.filter((p) => p.id !== user.uid);
+        await updateDoc(roomRef, { players: updatedPlayers });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setRoomId(null);
+    setView("menu");
+    setShowLeaveConfirm(false);
+  };
 
-    const botId = `bot-${Date.now()}`;
-    // Get a random unique name
-    const usedNames = gameState.players.map((p) => p.name);
-    const availableNames = BOT_NAMES.filter((n) => !usedNames.includes(n));
-    const randomName =
-      availableNames.length > 0
-        ? availableNames[0]
-        : `Bot ${gameState.players.length + 1}`;
+  const kickPlayer = async (targetId) => {
+    if (!roomId || !user) return;
+    try {
+      const roomRef = doc(
+        db,
+        "artifacts",
+        GAME_APP_ID,
+        "public",
+        "data",
+        "rooms",
+        roomId
+      );
+      const docSnap = await getDoc(roomRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const updatedPlayers = data.players.filter((p) => p.id !== targetId);
+        await updateDoc(roomRef, { players: updatedPlayers });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
-    const newBot = {
-      id: botId,
-      name: randomName,
-      isBot: true,
-      totalScore: 0,
-      currentRole: null,
-      roundScore: 0,
-    };
-
+  const updateRounds = async () => {
+    if (!roomId || !user || gameState.hostId !== user.uid) return;
+    const val = parseInt(lobbyRounds);
+    if (val < 5 || val > 200 || isNaN(val)) {
+      setRoundsError("Min 5, Max 200 rounds.");
+      return;
+    }
+    setRoundsError("");
     await updateDoc(
       doc(db, "artifacts", GAME_APP_ID, "public", "data", "rooms", roomId),
       {
-        players: arrayUnion(newBot),
+        maxRounds: val,
       }
     );
   };
 
-  const removeBot = async (botId) => {
-    const updatedPlayers = gameState.players.filter((p) => p.id !== botId);
-    await updateDoc(
-      doc(db, "artifacts", GAME_APP_ID, "public", "data", "rooms", roomId),
-      {
-        players: updatedPlayers,
-      }
+  const toggleReady = async () => {
+    const roomRef = doc(
+      db,
+      "artifacts",
+      GAME_APP_ID,
+      "public",
+      "data",
+      "rooms",
+      roomId
     );
+    if (!gameState.readyPlayers?.includes(user.uid)) {
+      await updateDoc(roomRef, {
+        readyPlayers: arrayUnion(user.uid),
+      });
+    }
   };
 
-  // --- Game Logic ---
-  const startNextRound = async () => {
-    if (!gameState || gameState.hostId !== user.uid) return;
-    if (gameState.players.length !== 4) return alert("Need exactly 4 players!");
+  const toggleGameReady = async () => {
+    const roomRef = doc(
+      db,
+      "artifacts",
+      GAME_APP_ID,
+      "public",
+      "data",
+      "rooms",
+      roomId
+    );
+    if (!gameState.gameReadyPlayers?.includes(user.uid)) {
+      await updateDoc(roomRef, {
+        gameReadyPlayers: arrayUnion(user.uid),
+      });
+    }
+  };
 
+  const executeNextRound = async () => {
     if (gameState.currentRound >= gameState.maxRounds) {
       await updateDoc(
         doc(db, "artifacts", GAME_APP_ID, "public", "data", "rooms", roomId),
@@ -343,7 +569,6 @@ export default function ThiefPoliceGame() {
 
     const deck = shuffle(["KING", "POLICE", "ROBBER", "THIEF"]);
     const nextRoundNum = gameState.currentRound + 1;
-    // Odd Rounds (1,3,5): Find Thief | Even Rounds (2,4,6): Find Robber
     const target = nextRoundNum % 2 !== 0 ? "THIEF" : "ROBBER";
 
     const updatedPlayers = gameState.players.map((p, i) => ({
@@ -360,49 +585,40 @@ export default function ThiefPoliceGame() {
         turnState: "GUESSING",
         roundTarget: target,
         players: updatedPlayers,
+        readyPlayers: [],
         lastRoundResult: null,
       }
     );
   };
 
   const handlePoliceGuess = async (targetPlayerId) => {
-    // Only police or host-bot-logic can trigger this
-    // We double check legitimacy in logic, but client side check is:
-    // if human: must be police
-    // if bot: host triggers it
-
     const targetPlayer = gameState.players.find((p) => p.id === targetPlayerId);
-    const requiredRole = gameState.roundTarget; // THIEF or ROBBER
+    const requiredRole = gameState.roundTarget;
 
     let updatedPlayers = [...gameState.players];
     let resultMsg = "";
     let success = false;
 
-    // --- Scoring Logic ---
     if (targetPlayer.currentRole === requiredRole) {
       success = true;
       resultMsg = `Success! Police caught the ${ROLES[requiredRole].name}.`;
-
       updatedPlayers = updatedPlayers.map((p) => {
         let score = 0;
         if (p.currentRole === "KING") score = 10;
         else if (p.currentRole === "POLICE") score = 8;
-        else if (p.currentRole === requiredRole) score = 0; // Caught target
-        else score = ROLES[p.currentRole].points; // Innocent bystander
-
+        else if (p.currentRole === requiredRole) score = 0;
+        else score = ROLES[p.currentRole].points;
         return { ...p, roundScore: score, totalScore: p.totalScore + score };
       });
     } else {
       success = false;
       const actualRoleName = ROLES[targetPlayer.currentRole].name;
       resultMsg = `Failed! Police accused ${targetPlayer.name} (${actualRoleName}).`;
-
       updatedPlayers = updatedPlayers.map((p) => {
         let score = 0;
         if (p.currentRole === "KING") score = 10;
-        else if (p.currentRole === "POLICE") score = 0; // Police Failed
-        else score = ROLES[p.currentRole].points; // Everyone else keeps points
-
+        else if (p.currentRole === "POLICE") score = 0;
+        else score = ROLES[p.currentRole].points;
         return { ...p, roundScore: score, totalScore: p.totalScore + score };
       });
     }
@@ -439,18 +655,43 @@ export default function ThiefPoliceGame() {
     await updateDoc(
       doc(db, "artifacts", GAME_APP_ID, "public", "data", "rooms", roomId),
       {
+        gameInstanceId: Date.now(), // New ID for new session
         currentRound: 0,
         status: "lobby",
         players: resetPlayers,
         roundHistory: [],
+        readyPlayers: [],
+        gameReadyPlayers: [], // Reset Ready state
         turnState: "IDLE",
+      }
+    );
+  };
+
+  const addBot = async () => {
+    const botId = `bot-${Date.now()}`;
+    const usedNames = gameState.players.map((p) => p.name);
+    const availableNames = BOT_NAMES.filter((n) => !usedNames.includes(n));
+    const randomName =
+      availableNames.length > 0
+        ? availableNames[0]
+        : `Bot ${gameState.players.length + 1}`;
+    await updateDoc(
+      doc(db, "artifacts", GAME_APP_ID, "public", "data", "rooms", roomId),
+      {
+        players: arrayUnion({
+          id: botId,
+          name: randomName,
+          isBot: true,
+          totalScore: 0,
+          currentRole: null,
+          roundScore: 0,
+        }),
       }
     );
   };
 
   // --- Views ---
 
-  // 1. Menu
   if (view === "menu") {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
@@ -459,54 +700,32 @@ export default function ThiefPoliceGame() {
             THIEF POLICE
           </h1>
           <p className="text-center text-slate-400 text-sm mb-8">
-            Babu Chor Dakat Police
+            Babu Police Chor Daakat
           </p>
-
           {error && (
             <div className="bg-red-500/20 text-red-200 p-3 rounded mb-4 text-sm text-center">
               {error}
             </div>
           )}
-
           <input
             className="w-full bg-slate-700 p-3 rounded mb-4 border border-slate-600 focus:border-yellow-500 outline-none"
             placeholder="Your Nickname"
             value={playerName}
             onChange={(e) => setPlayerName(e.target.value)}
           />
-
           <div className="space-y-4">
             <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700">
               <h3 className="text-sm font-bold text-slate-300 mb-2">
                 Create Room
               </h3>
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-xs text-slate-400">Total Rounds:</span>
-                <div className="flex gap-2">
-                  {ROUND_OPTIONS.map((opt) => (
-                    <button
-                      key={opt}
-                      onClick={() => setSelectedRounds(opt)}
-                      className={`px-3 py-1 text-xs rounded transition-colors ${
-                        selectedRounds === opt
-                          ? "bg-yellow-600 text-white"
-                          : "bg-slate-700 text-slate-400"
-                      }`}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-              </div>
               <button
                 onClick={createRoom}
                 disabled={loading}
-                className="w-full bg-yellow-600 hover:bg-yellow-500 py-2 rounded font-bold transition-colors"
+                className="w-full mt-2 bg-yellow-600 hover:bg-yellow-500 py-2 rounded font-bold"
               >
-                Create
+                Create Lobby
               </button>
             </div>
-
             <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700">
               <h3 className="text-sm font-bold text-slate-300 mb-2">
                 Join Room
@@ -521,7 +740,7 @@ export default function ThiefPoliceGame() {
                 <button
                   onClick={joinRoom}
                   disabled={loading}
-                  className="bg-blue-600 hover:bg-blue-500 px-4 rounded font-bold transition-colors"
+                  className="bg-blue-600 hover:bg-blue-500 px-4 rounded font-bold"
                 >
                   Join
                 </button>
@@ -533,10 +752,15 @@ export default function ThiefPoliceGame() {
     );
   }
 
-  // 2. Lobby
   if (view === "lobby" && gameState) {
     return (
       <div className="min-h-screen bg-slate-900 text-white p-4 flex flex-col items-center">
+        {showLeaveConfirm && (
+          <LeaveConfirmModal
+            onConfirm={leaveRoom}
+            onCancel={() => setShowLeaveConfirm(false)}
+          />
+        )}
         <div className="w-full max-w-lg">
           <div className="flex justify-between items-end mb-6">
             <h2 className="text-2xl font-bold text-slate-200">
@@ -545,9 +769,45 @@ export default function ThiefPoliceGame() {
                 {gameState.id}
               </span>
             </h2>
-            <div className="text-right">
-              <div className="text-xs text-slate-400">Rounds</div>
-              <div className="font-bold text-xl">{gameState.maxRounds}</div>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setShowLeaveConfirm(true)}
+                className="bg-slate-800 p-2 rounded hover:bg-red-900/50 hover:text-red-400 transition-colors"
+                title="Leave Room"
+              >
+                <LogOut size={20} />
+              </button>
+            </div>
+          </div>
+
+          {/* Round Settings Area */}
+          <div className="bg-slate-800 rounded-xl p-4 mb-4 border border-slate-700">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-400 font-bold">
+                <Settings size={18} /> Rounds
+              </div>
+              {gameState.hostId === user.uid ? (
+                <div className="flex flex-col items-end">
+                  <input
+                    type="number"
+                    className="bg-slate-700 text-center w-20 p-2 rounded border border-slate-600 focus:border-yellow-500 outline-none font-bold"
+                    value={lobbyRounds}
+                    onChange={(e) => setLobbyRounds(e.target.value)}
+                    onBlur={updateRounds}
+                    min="5"
+                    max="200"
+                  />
+                  {roundsError && (
+                    <span className="text-red-400 text-[10px] mt-1">
+                      {roundsError}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="font-black text-2xl text-yellow-500">
+                  {gameState.maxRounds}
+                </div>
+              )}
             </div>
           </div>
 
@@ -579,46 +839,39 @@ export default function ThiefPoliceGame() {
                     {p.name} {p.id === gameState.hostId && "👑"}
                   </span>
                 </div>
-                {p.isBot && gameState.hostId === user.uid && (
+                {gameState.hostId === user.uid && p.id !== user.uid && (
                   <button
-                    onClick={() => removeBot(p.id)}
-                    className="text-red-400 hover:text-red-300 text-[10px] font-bold border border-red-500/50 px-2 py-1 rounded"
+                    onClick={() => kickPlayer(p.id)}
+                    className="text-slate-500 hover:text-red-500 transition-colors p-1"
+                    title="Kick Player"
                   >
-                    REMOVE
+                    <Trash2 size={16} />
                   </button>
                 )}
               </div>
             ))}
-            {gameState.players.length < 4 && (
-              <div className="text-center text-slate-500 text-sm mt-4 italic">
-                Waiting for players...
-              </div>
-            )}
           </div>
-
-          {gameState.hostId === user.uid && (
+          {gameState.hostId === user.uid ? (
             <>
               {gameState.players.length < 4 && (
                 <button
                   onClick={addBot}
-                  className="w-full py-3 mb-4 rounded-xl border-2 border-dashed border-slate-600 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors flex items-center justify-center gap-2"
+                  className="w-full py-3 mb-4 rounded-xl border-2 border-dashed border-slate-600 text-slate-400 hover:bg-slate-800 flex items-center justify-center gap-2"
                 >
                   <Bot size={18} /> Add AI Bot
                 </button>
               )}
-
               <button
-                onClick={startNextRound}
-                disabled={gameState.players.length !== 4}
-                className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed py-4 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95"
+                onClick={executeNextRound}
+                disabled={gameState.players.length !== 4 || !!roundsError}
+                className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed py-4 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2"
               >
                 <Play size={20} /> Start Game
               </button>
             </>
-          )}
-          {gameState.hostId !== user.uid && (
-            <div className="text-center text-slate-400 animate-pulse mt-4">
-              Waiting for host to start...
+          ) : (
+            <div className="text-center text-slate-400 animate-pulse">
+              Waiting for host...
             </div>
           )}
         </div>
@@ -626,23 +879,47 @@ export default function ThiefPoliceGame() {
     );
   }
 
-  // 3. Game & Scoreboard
   if (view === "game" && gameState) {
     const me = gameState.players.find((p) => p.id === user.uid);
     if (!me)
       return (
         <div className="text-white bg-slate-900 min-h-screen p-10 text-center">
-          Removed from game.
+          Loading...
         </div>
       );
-
     const currentPolice = gameState.players.find(
       (p) => p.currentRole === "POLICE"
     );
     const isPolice = me.currentRole === "POLICE";
+    const iHaveVoted = gameState.readyPlayers?.includes(user.uid);
+    const humanCount = gameState.players.filter((p) => !p.isBot).length;
+    const voteCount = gameState.readyPlayers?.length || 0;
+
+    // Game Ready (Play Again) Stats
+    const iAmGameReady = gameState.gameReadyPlayers?.includes(user.uid);
+    const gameReadyCount = gameState.gameReadyPlayers?.length || 0;
+    // Human players excluding host (Host decides when to start, guests must signal ready)
+    // Actually, simple logic: All humans minus host must be ready for host button to enable
+    const otherHumanCount = humanCount - 1;
 
     return (
-      <div className="min-h-screen bg-slate-900 text-white flex flex-col relative overflow-hidden">
+      <div
+        className={`min-h-screen bg-slate-900 text-white flex flex-col relative overflow-hidden transition-transform duration-100 ${
+          shakeScreen ? "translate-x-1" : ""
+        }`}
+      >
+        {shakeScreen && (
+          <div className="absolute inset-0 bg-red-500/20 z-40 pointer-events-none" />
+        )}
+        {showConfetti && <Confetti type="colorful" />}
+        {showKingEffect && <Confetti type="gold" />}
+        {showLeaveConfirm && (
+          <LeaveConfirmModal
+            onConfirm={leaveRoom}
+            onCancel={() => setShowLeaveConfirm(false)}
+          />
+        )}
+
         {/* Header */}
         <div className="bg-slate-800 p-3 flex justify-between items-center shadow-lg z-10">
           <div>
@@ -661,12 +938,18 @@ export default function ThiefPoliceGame() {
             >
               <History size={20} />
             </button>
+            <button
+              onClick={() => setShowLeaveConfirm(true)}
+              className="bg-slate-700 p-2 rounded hover:bg-red-900/50 hover:text-red-400 transition-colors"
+              title="Leave Game"
+            >
+              <LogOut size={20} />
+            </button>
           </div>
         </div>
 
-        {/* Main Game Area */}
+        {/* Main Area */}
         <div className="flex-1 p-4 flex flex-col items-center justify-center gap-6">
-          {/* Instruction Banner */}
           <div className="text-center mb-4 w-full max-w-md">
             {gameState.status === "finished" ? (
               <div className="text-3xl font-bold text-yellow-400 animate-bounce">
@@ -678,7 +961,7 @@ export default function ThiefPoliceGame() {
                   Mission
                 </div>
                 <div className="text-2xl font-bold mb-2">
-                  Police must find the{" "}
+                  Find the{" "}
                   <span
                     className={
                       gameState.roundTarget === "THIEF"
@@ -700,30 +983,26 @@ export default function ThiefPoliceGame() {
                 <div className="text-lg font-bold mb-1">
                   {gameState.lastRoundResult}
                 </div>
-                {gameState.hostId === user.uid &&
-                  gameState.status !== "finished" && (
+                {gameState.status !== "finished" && (
+                  <div className="mt-4">
                     <button
-                      onClick={startNextRound}
-                      className="mt-4 w-full bg-green-600 py-3 rounded-lg font-bold hover:bg-green-500 transition-colors"
+                      onClick={toggleReady}
+                      disabled={iHaveVoted}
+                      className={`w-full py-3 rounded-lg font-bold transition-all ${
+                        iHaveVoted
+                          ? "bg-slate-600 text-slate-400"
+                          : "bg-green-600 hover:bg-green-500 text-white shadow-lg hover:scale-105"
+                      }`}
                     >
-                      Next Round
+                      {iHaveVoted
+                        ? "Waiting for others..."
+                        : "Ready for Next Round"}
                     </button>
-                  )}
-                {gameState.hostId !== user.uid &&
-                  gameState.status !== "finished" && (
-                    <div className="text-xs text-slate-500 mt-2">
-                      Waiting for host...
+                    <div className="text-xs text-center mt-2 text-slate-500">
+                      {voteCount}/{humanCount} Players Ready
                     </div>
-                  )}
-                {gameState.status === "finished" &&
-                  gameState.hostId === user.uid && (
-                    <button
-                      onClick={restartGame}
-                      className="mt-4 w-full bg-yellow-600 py-3 rounded-lg font-bold hover:bg-yellow-500"
-                    >
-                      New Game
-                    </button>
-                  )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -731,31 +1010,24 @@ export default function ThiefPoliceGame() {
           {/* Players Grid */}
           <div className="grid grid-cols-2 gap-4 w-full max-w-md">
             {gameState.players.map((p) => {
-              // Visibility Logic
               let roleKey = p.currentRole;
-              let isHidden = false;
-
-              // If round is over, reveal all
+              let isHidden = true;
               if (
                 gameState.turnState === "RESULT" ||
                 gameState.status === "finished"
-              ) {
+              )
                 isHidden = false;
-              }
-              // During guessing:
-              else {
-                // King and Police always visible
-                if (roleKey === "KING" || roleKey === "POLICE")
-                  isHidden = false;
-                // My own card always visible to me (Human only)
-                else if (p.id === user.uid) isHidden = false;
-                // Otherwise (Robber/Thief looking at each other, or Police looking at them) -> Hidden
-                else isHidden = true;
-              }
+              else if (
+                roleKey === "KING" ||
+                roleKey === "POLICE" ||
+                p.id === user.uid
+              )
+                isHidden = false;
 
               const roleInfo = roleKey ? ROLES[roleKey] : null;
               const canSelect =
                 isPolice && gameState.turnState === "GUESSING" && isHidden;
+              const isMe = p.id === user.uid;
 
               return (
                 <div
@@ -764,25 +1036,28 @@ export default function ThiefPoliceGame() {
                   className={`
                                 relative p-4 rounded-xl border-2 flex flex-col items-center justify-center aspect-[3/4] transition-all
                                 ${
-                                  canSelect
-                                    ? "cursor-pointer hover:scale-105 border-blue-400 bg-blue-900/20 shadow-[0_0_15px_rgba(59,130,246,0.5)]"
-                                    : "border-slate-700 bg-slate-800"
+                                  isMe
+                                    ? "bg-slate-800 shadow-[0_0_20px_rgba(6,182,212,0.4)] border-cyan-400 ring-2 ring-cyan-400/30 transform scale-105 z-10"
+                                    : "bg-slate-800 border-slate-700"
                                 }
                                 ${
-                                  gameState.turnState === "RESULT" &&
-                                  p.id === user.uid
-                                    ? "ring-2 ring-white"
+                                  canSelect
+                                    ? "cursor-pointer hover:scale-105 border-blue-400 bg-blue-900/20 shadow-[0_0_15px_rgba(59,130,246,0.5)]"
                                     : ""
                                 }
                             `}
                 >
-                  <div className="font-bold text-sm mb-2 text-white truncate w-full text-center flex items-center justify-center gap-1">
+                  <div
+                    className={`font-bold text-sm mb-2 truncate w-full text-center flex items-center justify-center gap-1 ${
+                      isMe ? "text-cyan-300" : "text-white"
+                    }`}
+                  >
                     {p.isBot && <Bot size={12} className="text-purple-400" />}
-                    {p.name} {p.id === user.uid && "(You)"}
+                    {p.name} {isMe && "(You)"}
                   </div>
 
                   {isHidden ? (
-                    <div className="flex-1 flex items-center justify-center animate-in fade-in zoom-in">
+                    <div className="flex-1 flex items-center justify-center">
                       <HelpCircle size={48} className="text-slate-600" />
                       <div className="absolute bottom-4 text-xs font-bold text-slate-500">
                         UNKNOWN
@@ -802,7 +1077,6 @@ export default function ThiefPoliceGame() {
                     </div>
                   )}
 
-                  {/* Score Delta Badge during Result */}
                   {gameState.turnState === "RESULT" && (
                     <div
                       className={`absolute -top-2 -right-2 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs border-2 border-slate-900 shadow-lg ${
@@ -812,12 +1086,19 @@ export default function ThiefPoliceGame() {
                       {p.roundScore}
                     </div>
                   )}
+
+                  {/* Vote Indicator */}
+                  {gameState.turnState === "RESULT" &&
+                    gameState.readyPlayers?.includes(p.id) && (
+                      <div className="absolute bottom-2 right-2 text-green-500 bg-slate-900 rounded-full">
+                        <CheckCircle size={16} />
+                      </div>
+                    )}
                 </div>
               );
             })}
           </div>
 
-          {/* My Total Score Footer */}
           <div className="mt-auto bg-slate-800 w-full max-w-md p-4 rounded-xl border border-slate-700 flex justify-between items-center shadow-lg">
             <span className="text-slate-400 text-sm font-bold">MY SCORE</span>
             <span className="text-3xl font-black text-yellow-500">
@@ -829,58 +1110,95 @@ export default function ThiefPoliceGame() {
         {/* Scoreboard Modal */}
         {showScoreboard && (
           <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
-            <div className="bg-slate-800 w-full max-w-2xl max-h-[80vh] rounded-2xl flex flex-col border border-slate-700 shadow-2xl">
+            <div className="bg-slate-800 w-full max-w-2xl max-h-[85vh] rounded-2xl flex flex-col border border-slate-700 shadow-2xl relative">
               <div className="p-4 border-b border-slate-700 flex justify-between items-center">
                 <h3 className="font-bold text-lg flex items-center gap-2">
                   <Trophy className="text-yellow-400" /> Scoreboard
                 </h3>
-                <button onClick={() => setShowScoreboard(false)}>
-                  <X />
-                </button>
+                {gameState.status !== "finished" && (
+                  <button onClick={() => setShowScoreboard(false)}>
+                    <X />
+                  </button>
+                )}
               </div>
 
-              {/* Leaderboard */}
-              <div className="p-4 bg-slate-900/50">
-                <div className="grid grid-cols-4 gap-2 text-xs font-bold text-slate-500 uppercase mb-2 text-center">
-                  <div className="text-left pl-2">Player</div>
-                  <div>Role</div>
-                  <div>Last</div>
-                  <div>Total</div>
-                </div>
-                {gameState.players
-                  .sort((a, b) => b.totalScore - a.totalScore)
-                  .map((p) => (
-                    <div
-                      key={p.id}
-                      className="grid grid-cols-4 gap-2 bg-slate-700 p-3 rounded mb-1 items-center text-center"
-                    >
-                      <div className="text-left font-bold truncate flex items-center gap-1">
-                        {p.isBot && (
-                          <Bot size={10} className="text-purple-400" />
-                        )}{" "}
-                        {p.name}
+              {/* Calculate Winners */}
+              {(() => {
+                const sortedPlayers = [...gameState.players].sort(
+                  (a, b) => b.totalScore - a.totalScore
+                );
+                const topScore = sortedPlayers[0]?.totalScore || 0;
+                const winners = sortedPlayers.filter(
+                  (p) => p.totalScore === topScore
+                );
+                const isTie = winners.length > 1;
+
+                return (
+                  <>
+                    {/* Winner Banner */}
+                    {gameState.status === "finished" && (
+                      <div className="bg-gradient-to-r from-yellow-600 to-yellow-800 p-4 text-center">
+                        <div className="text-sm font-bold text-yellow-200 uppercase tracking-widest">
+                          {isTie ? "Champions" : "Champion"}
+                        </div>
+                        <div className="text-3xl font-black text-white drop-shadow-md">
+                          {winners.map((w) => w.name).join(" & ")}
+                        </div>
                       </div>
-                      <div className="text-xs opacity-70">
-                        {p.currentRole ? ROLES[p.currentRole].name : "-"}
+                    )}
+
+                    <div className="p-4 bg-slate-900/50">
+                      <div className="grid grid-cols-4 gap-2 text-xs font-bold text-slate-500 uppercase mb-2 text-center">
+                        <div className="text-left pl-2">Player</div>
+                        <div>Role</div>
+                        <div>Last</div>
+                        <div>Total</div>
                       </div>
-                      <div
-                        className={`font-bold ${
-                          p.roundScore > 0 ? "text-green-400" : "text-slate-500"
-                        }`}
-                      >
-                        +{p.roundScore}
-                      </div>
-                      <div className="font-black text-yellow-400 text-lg">
-                        {p.totalScore}
-                      </div>
+                      {sortedPlayers.map((p, i) => {
+                        const isWinner =
+                          gameState.status === "finished" &&
+                          p.totalScore === topScore;
+                        return (
+                          <div
+                            key={p.id}
+                            className={`grid grid-cols-4 gap-2 p-3 rounded mb-1 items-center text-center ${
+                              isWinner
+                                ? "bg-yellow-900/30 border border-yellow-500/50"
+                                : "bg-slate-700"
+                            }`}
+                          >
+                            <div className="text-left font-bold truncate flex items-center gap-1">
+                              {isWinner && (
+                                <Crown size={12} className="text-yellow-400" />
+                              )}{" "}
+                              {p.name}
+                            </div>
+                            <div className="text-xs opacity-70">
+                              {p.currentRole ? ROLES[p.currentRole].name : "-"}
+                            </div>
+                            <div
+                              className={`font-bold ${
+                                p.roundScore > 0
+                                  ? "text-green-400"
+                                  : "text-slate-500"
+                              }`}
+                            >
+                              +{p.roundScore}
+                            </div>
+                            <div className="font-black text-yellow-400 text-lg">
+                              {p.totalScore}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))}
-              </div>
+                  </>
+                );
+              })()}
 
-              {/* History */}
               <div className="flex-1 overflow-y-auto p-4">
                 <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">
-                  Round History
+                  History
                 </h4>
                 {[...(gameState.roundHistory || [])].reverse().map((h, i) => (
                   <div
@@ -901,6 +1219,7 @@ export default function ThiefPoliceGame() {
                         {h.winner} Won
                       </span>
                     </div>
+                    {/* RESTORED DETAILED BREAKDOWN */}
                     <div className="grid grid-cols-4 gap-1">
                       {h.scores.map((s, idx) => (
                         <div
@@ -923,6 +1242,46 @@ export default function ThiefPoliceGame() {
                   </div>
                 ))}
               </div>
+
+              {/* Restart Area */}
+              {gameState.status === "finished" && (
+                <div className="p-4 border-t border-slate-700 bg-slate-800 rounded-b-2xl">
+                  {gameState.hostId === user.uid ? (
+                    <>
+                      <button
+                        onClick={restartGame}
+                        disabled={gameReadyCount < otherHumanCount}
+                        className="w-full bg-green-600 hover:bg-green-500 disabled:bg-slate-600 disabled:text-slate-400 py-3 rounded-xl font-bold flex items-center justify-center gap-2 text-lg shadow-lg"
+                      >
+                        {gameReadyCount < otherHumanCount ? (
+                          <>
+                            <RotateCcw className="animate-spin" /> Waiting for
+                            Players ({gameReadyCount}/{otherHumanCount})
+                          </>
+                        ) : (
+                          <>
+                            <RotateCcw /> Play Again
+                          </>
+                        )}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={toggleGameReady}
+                      disabled={iAmGameReady}
+                      className={`w-full py-3 rounded-xl font-bold transition-colors ${
+                        iAmGameReady
+                          ? "bg-slate-600 text-slate-400"
+                          : "bg-blue-600 hover:bg-blue-500"
+                      }`}
+                    >
+                      {iAmGameReady
+                        ? "Waiting for Host..."
+                        : "Ready for Next Game"}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
