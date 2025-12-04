@@ -12,13 +12,18 @@ import {
   setDoc,
   getDoc,
   updateDoc,
+  deleteDoc,
   onSnapshot,
   arrayUnion,
   arrayRemove,
+  collection,
+  query,
+  where,
 } from "firebase/firestore";
 import {
   Crown,
   Shield,
+  Siren,
   Skull,
   Footprints,
   User,
@@ -34,23 +39,27 @@ import {
   RotateCcw,
   Trash2,
   Settings,
+  BookOpen,
+  Home,
 } from "lucide-react";
 
 // --- Firebase Config ---
+// FIXED: Use the environment configuration instead of hardcoded values to prevent auth errors
 const firebaseConfig = {
-  apiKey: "AIzaSyDf86JHBvY9Y1B1x8QDbJkASmlANouEvX0",
-  authDomain: "card-games-28729.firebaseapp.com",
-  projectId: "card-games-28729",
-  storageBucket: "card-games-28729.firebasestorage.app",
-  messagingSenderId: "466779458834",
-  appId: "1:466779458834:web:e55fbec522369cc56d37cb",
+  apiKey: "AIzaSyBjIjK53vVJW1y5RaqEFGSFp0ECVDBEe1o",
+  authDomain: "game-hub-ff8aa.firebaseapp.com",
+  projectId: "game-hub-ff8aa",
+  storageBucket: "game-hub-ff8aa.firebasestorage.app",
+  messagingSenderId: "586559578902",
+  appId: "1:586559578902:web:e2c7114fcf22055a6aa637",
 };
-
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const GAME_APP_ID = "thief-police-v4-refined";
+// Use the environment app ID or a default
+const GAME_APP_ID =
+  typeof __app_id !== "undefined" ? __app_id : "police-hunt-v1";
 
 // --- Constants ---
 const ROLES = {
@@ -60,6 +69,7 @@ const ROLES = {
     icon: Crown,
     color: "bg-yellow-600",
     textColor: "text-yellow-400",
+    desc: "The ruler. Always scores high (10 pts).",
   },
   POLICE: {
     name: "Police",
@@ -67,6 +77,7 @@ const ROLES = {
     icon: Shield,
     color: "bg-blue-600",
     textColor: "text-blue-400",
+    desc: "The enforcer. Must find the criminal to score (8 pts).",
   },
   ROBBER: {
     name: "Robber",
@@ -74,6 +85,7 @@ const ROLES = {
     icon: Skull,
     color: "bg-red-600",
     textColor: "text-red-500",
+    desc: "The heavy criminal. Scores 6 pts if not caught.",
   },
   THIEF: {
     name: "Thief",
@@ -81,6 +93,7 @@ const ROLES = {
     icon: Footprints,
     color: "bg-red-600",
     textColor: "text-red-300",
+    desc: "The petty criminal. Scores 4 pts if not caught.",
   },
 };
 
@@ -112,25 +125,193 @@ const shuffle = (array) => {
 
 // --- Sub-Components ---
 
-const LeaveConfirmModal = ({ onConfirm, onCancel }) => (
-  <div className="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-4">
+// UPDATED: Dark Blue/Slate Gradient Background
+const FloatingBackground = () => (
+  <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+    <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900 via-blue-750 to-black" />
+    <div className="absolute top-0 left-0 w-full h-full bg-blue-500/5 mix-blend-overlay" />
+    <div
+      className="absolute inset-0 opacity-10"
+      style={{
+        backgroundImage:
+          'url("https://www.transparenttextures.com/patterns/black-scales.png")',
+      }}
+    ></div>
+  </div>
+);
+
+// UPDATED: Police Logo Footer
+const PoliceLogo = () => (
+  <div className="flex items-center justify-center gap-1 opacity-40 mt-auto pb-2 pt-2 relative z-10">
+    <Siren size={12} className="text-blue-500" />
+    <span className="text-[10px] font-black tracking-widest text-blue-500 uppercase">
+      POLICE HUNT
+    </span>
+  </div>
+);
+
+// UPDATED: Exit Logic Modal
+const LeaveConfirmModal = ({
+  onConfirmLeave,
+  onConfirmLobby,
+  onCancel,
+  isHost,
+  inGame,
+}) => (
+  <div className="fixed inset-0 bg-black/90 z-[200] flex items-center justify-center p-4 animate-in fade-in">
     <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 max-w-sm w-full text-center shadow-2xl">
-      <h3 className="text-xl font-bold text-white mb-2">Leave Game?</h3>
+      <h3 className="text-xl font-bold text-white mb-2">Depart Station?</h3>
       <p className="text-slate-400 mb-6 text-sm">
-        Are you sure you want to leave? You will be removed from the room.
+        {inGame
+          ? "Leaving now will end the hunt for everyone!"
+          : "Leaving the lobby will disconnect you."}
       </p>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="flex flex-col gap-3">
         <button
           onClick={onCancel}
-          className="bg-slate-700 hover:bg-slate-600 text-white py-3 rounded font-bold"
+          className="bg-slate-700 hover:bg-slate-600 text-white py-3 rounded font-bold transition-colors"
         >
-          No, Stay
+          Stay (Cancel)
         </button>
+
+        {/* Lobby Button - Only visible in GAME view and only for HOST */}
+        {inGame && isHost && (
+          <button
+            onClick={onConfirmLobby}
+            className="py-3 rounded font-bold transition-colors flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white"
+          >
+            <Home size={18} /> Return Squad to Lobby
+          </button>
+        )}
+
         <button
-          onClick={onConfirm}
-          className="bg-red-600 hover:bg-red-500 text-white py-3 rounded font-bold"
+          onClick={onConfirmLeave}
+          className="bg-red-600 hover:bg-red-500 text-white py-3 rounded font-bold transition-colors flex items-center justify-center gap-2"
         >
-          Yes, Leave
+          <LogOut size={18} /> Leave Game
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+const GameGuideModal = ({ onClose }) => (
+  <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-0 md:p-4 backdrop-blur-md animate-in fade-in">
+    <div className="bg-slate-800 md:rounded-2xl w-full max-w-4xl h-full md:h-auto max-h-[90vh] overflow-hidden border-none md:border border-slate-600 shadow-2xl flex flex-col relative">
+      <div className="p-4 md:p-6 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
+        <div className="flex flex-col">
+          <h2 className="text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-700 to-blue-600 uppercase tracking-widest">
+            Game Rules
+          </h2>
+          <span className="text-slate-400 text-xs md:text-sm font-bold tracking-wide">
+            Deduction & Deception
+          </span>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-2 hover:bg-slate-700 rounded-full text-slate-400 hover:text-white transition-colors"
+        >
+          <X size={24} />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 text-slate-300">
+        {/* Objective */}
+        <div className="bg-slate-700/50 p-6 rounded-xl border border-slate-600">
+          <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+            <Trophy className="text-yellow-500" size={24} /> The Objective
+          </h3>
+          <p className="text-slate-300 leading-relaxed">
+            The goal is to accumulate the highest score after a set number of
+            rounds. Roles are shuffled every round.
+            <br />
+            <br />
+            <strong>The Twist:</strong> The{" "}
+            <span className="text-blue-400 font-bold">Police</span> must find
+            the correct criminal. If they succeed, they score points. If they
+            fail, the criminal escapes with the loot!
+          </p>
+        </div>
+
+        {/* Roles Grid */}
+        <div>
+          <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+            <User className="text-purple-400" size={24} /> The Roles
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {Object.values(ROLES).map((role) => (
+              <div
+                key={role.name}
+                className="flex items-start gap-4 bg-slate-700/30 p-4 rounded-xl border border-slate-600"
+              >
+                <div
+                  className={`p-3 rounded-xl bg-slate-800 border border-slate-700 shadow-lg`}
+                >
+                  <role.icon className={role.textColor} size={28} />
+                </div>
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <h4 className={`font-black text-lg ${role.textColor}`}>
+                      {role.name}
+                    </h4>
+                    <span className="bg-slate-900 px-2 py-0.5 rounded text-xs font-bold text-slate-400">
+                      {role.points} Pts
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-400 leading-tight">
+                    {role.desc}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Mechanics */}
+        <div>
+          <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+            <Siren className="text-blue-400" size={24} /> How It Works
+          </h3>
+          <div className="space-y-4 text-sm md:text-base border-l-2 border-slate-600 pl-4">
+            <div>
+              <strong className="text-white block mb-1">1. Assignment</strong>
+              Each player is secretly assigned a role: King, Police, Robber, or
+              Thief.
+            </div>
+            <div>
+              <strong className="text-white block mb-1">2. The Hunt</strong>
+              The <span className="text-blue-400 font-bold">Police</span> must
+              reveal themselves and guess who holds a specific criminal card
+              (e.g., "Find the Robber").
+            </div>
+            <div>
+              <strong className="text-white block mb-1">3. Scoring</strong>
+              <ul className="list-disc pl-5 mt-1 space-y-1 text-slate-400">
+                <li>
+                  <span className="text-yellow-400">King:</span> Always gets{" "}
+                  <strong>10 pts</strong>.
+                </li>
+                <li>
+                  <span className="text-blue-400">Police:</span> Gets{" "}
+                  <strong>8 pts</strong> if they guess correctly.{" "}
+                  <strong>0 pts</strong> if wrong.
+                </li>
+                <li>
+                  <span className="text-red-400">Criminals:</span> Get points (6
+                  or 4) only if the Police guesses <strong>WRONG</strong>. If
+                  caught, they get <strong>0 pts</strong>.
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="p-4 md:p-6 bg-slate-900 border-t border-slate-700 text-center">
+        <button
+          onClick={onClose}
+          className="w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white px-12 py-3 rounded-xl font-bold text-lg shadow-lg transition-all"
+        >
+          Let's Play!
         </button>
       </div>
     </div>
@@ -204,6 +385,7 @@ export default function ThiefPoliceGame() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showScoreboard, setShowScoreboard] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
   // Lobby Rounds State
   const [lobbyRounds, setLobbyRounds] = useState(25);
@@ -248,19 +430,11 @@ export default function ThiefPoliceGame() {
         const data = docSnap.data();
         setGameState({ id: docSnap.id, ...data });
 
-        // Sync local rounds state for host editing visual
-        if (data.maxRounds && view === "lobby") {
-          // We only update if we aren't currently editing (focus check difficult here)
-          // Simpler: Just sync when view changes or initially.
-          // For now, let's allow local state to drift only when user types.
-        }
-
-        // Ensure removed players are redirected
         const amIInRoom = data.players.some((p) => p.id === user.uid);
         if (!amIInRoom) {
           setRoomId(null);
           setView("menu");
-          setError("You have left or were removed from the room.");
+          setError("The Station has been closed! (Room Deleted or Kicked)");
           return;
         }
 
@@ -273,11 +447,11 @@ export default function ThiefPoliceGame() {
       } else {
         setRoomId(null);
         setView("menu");
-        setError("Room closed.");
+        setError("The Station has been closed! (Room Deleted)");
       }
     });
     return () => unsubscribe();
-  }, [roomId, user, view]); // Added view to deps to help sync
+  }, [roomId, user, view]);
 
   // --- Effects Logic ---
   useEffect(() => {
@@ -457,6 +631,7 @@ export default function ThiefPoliceGame() {
     setLoading(false);
   };
 
+  // UPDATED: Logic for Leaving
   const leaveRoom = async () => {
     if (!roomId || !user) return;
     try {
@@ -472,14 +647,72 @@ export default function ThiefPoliceGame() {
       const docSnap = await getDoc(roomRef);
       if (docSnap.exists()) {
         const data = docSnap.data();
-        const updatedPlayers = data.players.filter((p) => p.id !== user.uid);
-        await updateDoc(roomRef, { players: updatedPlayers });
+
+        const isHost = data.hostId === user.uid;
+
+        if (isHost) {
+          // If Host leaves, destroy the room (Lobby behavior)
+          if (data.status === "lobby") {
+            await deleteDoc(roomRef);
+          } else {
+            // In Game: Handle Abandon
+            await handleGameAbandon(roomRef, data);
+          }
+        } else {
+          // Guest Logic
+          if (data.status === "lobby") {
+            const updatedPlayers = data.players.filter(
+              (p) => p.id !== user.uid
+            );
+            await updateDoc(roomRef, { players: updatedPlayers });
+          } else {
+            // In Game: Guest leaves, end game for everyone (as per instructions)
+            await handleGameAbandon(roomRef, data);
+          }
+        }
       }
     } catch (e) {
       console.error(e);
     }
     setRoomId(null);
     setView("menu");
+    setShowLeaveConfirm(false);
+  };
+
+  const handleGameAbandon = async (roomRef, data) => {
+    // Trigger "Finished" state so modals pop up for everyone
+    const remainingPlayers = data.players.filter((p) => p.id !== user.uid);
+
+    // If anyone leaves, the game ends. Winners are the remaining ones.
+    // Note: This simplifies "Scoreboard" logic since scoreboard handles winners.
+
+    await updateDoc(roomRef, {
+      status: "finished",
+      players: data.players.filter((p) => p.id !== user.uid), // Remove the leaver
+    });
+  };
+
+  const resetToLobby = async () => {
+    if (!gameState || gameState.hostId !== user.uid) return;
+    const resetPlayers = gameState.players.map((p) => ({
+      ...p,
+      totalScore: 0,
+      currentRole: null,
+      roundScore: 0,
+    }));
+    await updateDoc(
+      doc(db, "artifacts", GAME_APP_ID, "public", "data", "rooms", roomId),
+      {
+        gameInstanceId: Date.now(),
+        currentRound: 0,
+        status: "lobby",
+        players: resetPlayers,
+        roundHistory: [],
+        readyPlayers: [],
+        gameReadyPlayers: [],
+        turnState: "IDLE",
+      }
+    );
     setShowLeaveConfirm(false);
   };
 
@@ -569,6 +802,7 @@ export default function ThiefPoliceGame() {
 
     const deck = shuffle(["KING", "POLICE", "ROBBER", "THIEF"]);
     const nextRoundNum = gameState.currentRound + 1;
+    // Odd rounds (1,3,5) -> find THIEF, Even rounds (2,4,6) -> find ROBBER
     const target = nextRoundNum % 2 !== 0 ? "THIEF" : "ROBBER";
 
     const updatedPlayers = gameState.players.map((p, i) => ({
@@ -694,103 +928,114 @@ export default function ThiefPoliceGame() {
 
   if (view === "menu") {
     return (
-      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
-          <h1 className="text-4xl font-black text-center mb-2 bg-gradient-to-r from-yellow-400 to-red-500 bg-clip-text text-transparent">
-            THIEF POLICE
+      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans">
+        <FloatingBackground />
+        {showGuide && <GameGuideModal onClose={() => setShowGuide(false)} />}
+
+        <div className="z-10 mb-10 text-center animate-in fade-in zoom-in duration-700">
+          <Siren
+            size={64}
+            className="text-red-700 mx-auto mb-4 animate-bounce drop-shadow-[0_0_15px_rgba(59,130,246,0.5)]"
+          />
+          <h1 className="text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-red-700 to-blue-600 font-serif tracking-widest drop-shadow-md">
+            POLICE HUNT
           </h1>
-          <p className="text-center text-slate-400 text-sm mb-8">
-            Babu Police Chor Daakat
+          <p className="text-slate-400 tracking-[0.3em] uppercase mt-2 font-bold">
+            The Heist
           </p>
+        </div>
+
+        <div className="max-w-md w-full bg-slate-800/90 backdrop-blur border border-slate-600 p-8 rounded-2xl shadow-2xl z-10 animate-in slide-in-from-bottom-10 duration-700 delay-100">
           {error && (
-            <div className="bg-red-500/20 text-red-200 p-3 rounded mb-4 text-sm text-center">
+            <div className="bg-red-900/50 text-red-200 p-3 rounded mb-4 text-sm text-center border border-red-800">
               {error}
             </div>
           )}
           <input
-            className="w-full bg-slate-700 p-3 rounded mb-4 border border-slate-600 focus:border-yellow-500 outline-none"
+            className="w-full bg-slate-900 border border-slate-600 p-3 rounded mb-4 text-white placeholder-slate-500 focus:border-blue-500 outline-none transition-colors"
             placeholder="Your Nickname"
             value={playerName}
             onChange={(e) => setPlayerName(e.target.value)}
           />
-          <div className="space-y-4">
-            <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700">
-              <h3 className="text-sm font-bold text-slate-300 mb-2">
-                Create Room
-              </h3>
-              <button
-                onClick={createRoom}
-                disabled={loading}
-                className="w-full mt-2 bg-yellow-600 hover:bg-yellow-500 py-2 rounded font-bold"
-              >
-                Create Lobby
-              </button>
-            </div>
-            <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700">
-              <h3 className="text-sm font-bold text-slate-300 mb-2">
-                Join Room
-              </h3>
-              <div className="flex gap-2">
-                <input
-                  className="flex-1 bg-slate-700 p-2 rounded text-sm uppercase"
-                  placeholder="CODE"
-                  value={roomCode}
-                  onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                />
-                <button
-                  onClick={joinRoom}
-                  disabled={loading}
-                  className="bg-blue-600 hover:bg-blue-500 px-4 rounded font-bold"
-                >
-                  Join
-                </button>
-              </div>
-            </div>
+
+          <button
+            onClick={createRoom}
+            disabled={loading}
+            className="w-full bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 p-4 rounded-xl font-bold mb-4 flex items-center justify-center gap-2 border border-yellow-500/30 shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all text-black"
+          >
+            <Siren size={20} /> Generate Crime Scene
+          </button>
+
+          <div className="flex flex-col sm:flex-row gap-2 mb-4">
+            <input
+              className="w-full sm:flex-1 bg-slate-900 border border-slate-600 p-3 rounded text-white placeholder-slate-500 uppercase font-mono tracking-wider focus:border-blue-500 outline-none"
+              placeholder="ROOM CODE"
+              value={roomCode}
+              onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+            />
+            <button
+              onClick={joinRoom}
+              disabled={loading}
+              className="w-full sm:w-auto bg-blue-700 hover:bg-blue-600 border border-blue-500 px-6 py-3 rounded font-bold transition-colors shadow-lg"
+            >
+              Join
+            </button>
           </div>
+
+          <button
+            onClick={() => setShowGuide(true)}
+            className="w-full mt-4 text-sm text-slate-400 hover:text-white flex items-center justify-center gap-2 py-2 transition-colors"
+          >
+            <BookOpen size={16} /> How to Play
+          </button>
         </div>
       </div>
     );
   }
 
   if (view === "lobby" && gameState) {
+    const isHost = gameState.hostId === user.uid;
     return (
-      <div className="min-h-screen bg-slate-900 text-white p-4 flex flex-col items-center">
+      <div className="min-h-screen bg-slate-900 text-white p-4 flex flex-col items-center relative overflow-hidden">
+        <FloatingBackground />
         {showLeaveConfirm && (
           <LeaveConfirmModal
-            onConfirm={leaveRoom}
+            onConfirmLeave={leaveRoom}
+            onConfirmLobby={() => {
+              resetToLobby();
+              setShowLeaveConfirm(false);
+            }}
             onCancel={() => setShowLeaveConfirm(false)}
+            isHost={isHost}
+            inGame={false}
           />
         )}
-        <div className="w-full max-w-lg">
-          <div className="flex justify-between items-end mb-6">
-            <h2 className="text-2xl font-bold text-slate-200">
-              Room:{" "}
-              <span className="text-yellow-400 tracking-wider">
-                {gameState.id}
-              </span>
+        <div className="w-full max-w-lg z-10 bg-slate-800/90 p-8 rounded-2xl border border-slate-700 shadow-2xl mb-4">
+          <div className="flex justify-between items-center mb-8 border-b border-slate-700 pb-4">
+            <h2 className="text-2xl font-bold font-serif text-blue-400">
+              Station:{" "}
+              <span className="text-white font-mono">{gameState.id}</span>
             </h2>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setShowLeaveConfirm(true)}
-                className="bg-slate-800 p-2 rounded hover:bg-red-900/50 hover:text-red-400 transition-colors"
-                title="Leave Room"
-              >
-                <LogOut size={20} />
-              </button>
-            </div>
+            <button
+              onClick={() => setShowLeaveConfirm(true)}
+              className="bg-slate-700 p-2 rounded hover:bg-red-900/50 hover:text-red-400 transition-colors"
+              title="Leave Room"
+            >
+              <LogOut size={20} />
+            </button>
           </div>
 
           {/* Round Settings Area */}
-          <div className="bg-slate-800 rounded-xl p-4 mb-4 border border-slate-700">
+          <div className="bg-slate-900/50 rounded-xl p-4 mb-6 border border-slate-700">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-slate-400 font-bold">
-                <Settings size={18} /> Rounds
+              <div className="flex items-center gap-2 text-slate-400 font-bold uppercase text-xs tracking-wider">
+                <Settings size={16} /> Rounds
               </div>
               {gameState.hostId === user.uid ? (
                 <div className="flex flex-col items-end">
                   <input
                     type="number"
-                    className="bg-slate-700 text-center w-20 p-2 rounded border border-slate-600 focus:border-yellow-500 outline-none font-bold"
+                    className="bg-slate-800 text-center w-20 p-2 rounded border border-slate-600 focus:border-yellow-500 outline-none font-bold"
                     value={lobbyRounds}
                     onChange={(e) => setLobbyRounds(e.target.value)}
                     onBlur={updateRounds}
@@ -811,15 +1056,15 @@ export default function ThiefPoliceGame() {
             </div>
           </div>
 
-          <div className="bg-slate-800 rounded-xl p-6 mb-6 border border-slate-700">
+          <div className="bg-slate-900/50 rounded-xl p-6 mb-6 border border-slate-700">
             <div className="flex justify-between mb-4 text-xs font-bold text-slate-500 uppercase">
-              <span>Players</span>
+              <span>Squad</span>
               <span>{gameState.players.length} / 4</span>
             </div>
             {gameState.players.map((p) => (
               <div
                 key={p.id}
-                className="flex items-center justify-between bg-slate-700 p-3 rounded mb-2"
+                className="flex items-center justify-between bg-slate-800 p-3 rounded mb-2 border border-slate-700"
               >
                 <div className="flex items-center gap-3">
                   <div
@@ -870,23 +1115,20 @@ export default function ThiefPoliceGame() {
               </button>
             </>
           ) : (
-            <div className="text-center text-slate-400 animate-pulse">
-              Waiting for host...
+            <div className="text-center text-slate-400 animate-pulse italic">
+              Waiting for Captain to start...
             </div>
           )}
         </div>
+        <PoliceLogo />
       </div>
     );
   }
 
   if (view === "game" && gameState) {
     const me = gameState.players.find((p) => p.id === user.uid);
-    if (!me)
-      return (
-        <div className="text-white bg-slate-900 min-h-screen p-10 text-center">
-          Loading...
-        </div>
-      );
+    if (!me) return null;
+
     const currentPolice = gameState.players.find(
       (p) => p.currentRole === "POLICE"
     );
@@ -894,37 +1136,49 @@ export default function ThiefPoliceGame() {
     const iHaveVoted = gameState.readyPlayers?.includes(user.uid);
     const humanCount = gameState.players.filter((p) => !p.isBot).length;
     const voteCount = gameState.readyPlayers?.length || 0;
+    const isHost = gameState.hostId === user.uid;
 
     // Game Ready (Play Again) Stats
     const iAmGameReady = gameState.gameReadyPlayers?.includes(user.uid);
     const gameReadyCount = gameState.gameReadyPlayers?.length || 0;
-    // Human players excluding host (Host decides when to start, guests must signal ready)
-    // Actually, simple logic: All humans minus host must be ready for host button to enable
     const otherHumanCount = humanCount - 1;
 
     return (
       <div
-        className={`min-h-screen bg-slate-900 text-white flex flex-col relative overflow-hidden transition-transform duration-100 ${
+        className={`min-h-screen bg-slate-900 text-white flex flex-col relative overflow-hidden transition-transform duration-100 font-sans ${
           shakeScreen ? "translate-x-1" : ""
         }`}
       >
+        <FloatingBackground />
+
         {shakeScreen && (
           <div className="absolute inset-0 bg-red-500/20 z-40 pointer-events-none" />
         )}
         {showConfetti && <Confetti type="colorful" />}
         {showKingEffect && <Confetti type="gold" />}
+
         {showLeaveConfirm && (
           <LeaveConfirmModal
-            onConfirm={leaveRoom}
             onCancel={() => setShowLeaveConfirm(false)}
+            onConfirmLeave={leaveRoom}
+            onConfirmLobby={() => {
+              resetToLobby();
+              setShowLeaveConfirm(false);
+            }}
+            isHost={isHost}
+            inGame={true}
           />
         )}
 
+        {showGuide && <GameGuideModal onClose={() => setShowGuide(false)} />}
+
         {/* Header */}
-        <div className="bg-slate-800 p-3 flex justify-between items-center shadow-lg z-10">
+        <div className="bg-slate-800/90 backdrop-blur-md p-3 flex justify-between items-center shadow-lg z-10 border-b border-slate-700">
           <div>
-            <div className="text-xs text-slate-400">Round</div>
-            <div className="font-bold text-xl leading-none">
+            <div className="text-xs text-slate-400 font-bold uppercase tracking-wide">
+              Round
+            </div>
+            <div className="font-bold text-xl leading-none text-blue-400">
               {gameState.currentRound}{" "}
               <span className="text-slate-500 text-sm">
                 / {gameState.maxRounds}
@@ -933,14 +1187,22 @@ export default function ThiefPoliceGame() {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => setShowScoreboard(true)}
-              className="bg-slate-700 p-2 rounded hover:bg-slate-600"
+              onClick={() => setShowGuide(true)}
+              className="bg-slate-700 p-2 rounded hover:bg-slate-600 text-slate-300"
+              title="Game Rules"
             >
-              <History size={20} />
+              <BookOpen size={20} />
+            </button>
+            <button
+              onClick={() => setShowScoreboard(true)}
+              className="bg-slate-700 p-2 rounded hover:bg-slate-600 text-slate-300"
+              title="Scoreboard"
+            >
+              <Trophy size={20} />
             </button>
             <button
               onClick={() => setShowLeaveConfirm(true)}
-              className="bg-slate-700 p-2 rounded hover:bg-red-900/50 hover:text-red-400 transition-colors"
+              className="bg-slate-700 p-2 rounded hover:bg-red-900/50 hover:text-red-400 transition-colors text-slate-300"
               title="Leave Game"
             >
               <LogOut size={20} />
@@ -949,7 +1211,7 @@ export default function ThiefPoliceGame() {
         </div>
 
         {/* Main Area */}
-        <div className="flex-1 p-4 flex flex-col items-center justify-center gap-6">
+        <div className="flex-1 p-4 flex flex-col items-center justify-center gap-6 z-10">
           <div className="text-center mb-4 w-full max-w-md">
             {gameState.status === "finished" ? (
               <div className="text-3xl font-bold text-yellow-400 animate-bounce">
@@ -972,15 +1234,15 @@ export default function ThiefPoliceGame() {
                     {gameState.roundTarget}
                   </span>
                 </div>
-                <div className="text-sm bg-slate-800/50 p-2 rounded-lg border border-slate-700 animate-pulse text-blue-300">
+                <div className="text-sm bg-slate-800/80 p-2 rounded-lg border border-slate-700 animate-pulse text-blue-300 backdrop-blur-sm">
                   {isPolice
                     ? "Click a player to guess!"
                     : `${currentPolice?.name} is investigating...`}
                 </div>
               </>
             ) : (
-              <div className="bg-slate-800 px-6 py-4 rounded-xl border border-slate-600 shadow-xl w-full">
-                <div className="text-lg font-bold mb-1">
+              <div className="bg-slate-800/90 backdrop-blur px-6 py-4 rounded-xl border border-slate-600 shadow-xl w-full">
+                <div className="text-lg font-bold mb-1 text-center text-white">
                   {gameState.lastRoundResult}
                 </div>
                 {gameState.status !== "finished" && (
@@ -1034,11 +1296,11 @@ export default function ThiefPoliceGame() {
                   key={p.id}
                   onClick={() => (canSelect ? handlePoliceGuess(p.id) : null)}
                   className={`
-                                relative p-4 rounded-xl border-2 flex flex-col items-center justify-center aspect-[3/4] transition-all
+                                relative p-4 rounded-xl border-2 flex flex-col items-center justify-center aspect-[3/4] transition-all backdrop-blur-sm
                                 ${
                                   isMe
-                                    ? "bg-slate-800 shadow-[0_0_20px_rgba(6,182,212,0.4)] border-green-400 ring-2 ring-cyan-400/30 transform scale-105 z-10"
-                                    : "bg-slate-800 border-slate-700"
+                                    ? "bg-slate-800/90 shadow-[0_0_20px_rgba(6,182,212,0.4)] border-green-400 ring-2 ring-cyan-400/30 transform scale-105 z-10"
+                                    : "bg-slate-800/80 border-slate-700"
                                 }
                                 ${
                                   canSelect
@@ -1099,8 +1361,10 @@ export default function ThiefPoliceGame() {
             })}
           </div>
 
-          <div className="mt-auto bg-slate-800 w-full max-w-md p-4 rounded-xl border border-slate-700 flex justify-between items-center shadow-lg">
-            <span className="text-slate-400 text-sm font-bold">MY SCORE</span>
+          <div className="mt-auto bg-slate-800/90 backdrop-blur w-full max-w-md p-4 rounded-xl border border-slate-700 flex justify-between items-center shadow-lg">
+            <span className="text-slate-400 text-sm font-bold uppercase">
+              My Score
+            </span>
             <span className="text-3xl font-black text-yellow-500">
               {me.totalScore}
             </span>
@@ -1246,8 +1510,8 @@ export default function ThiefPoliceGame() {
               {/* Restart Area */}
               {gameState.status === "finished" && (
                 <div className="p-4 border-t border-slate-700 bg-slate-800 rounded-b-2xl">
-                  {gameState.hostId === user.uid ? (
-                    <>
+                  <div className="flex flex-col gap-3">
+                    {gameState.hostId === user.uid ? (
                       <button
                         onClick={restartGame}
                         disabled={gameReadyCount < otherHumanCount}
@@ -1264,27 +1528,37 @@ export default function ThiefPoliceGame() {
                           </>
                         )}
                       </button>
-                    </>
-                  ) : (
+                    ) : (
+                      <button
+                        onClick={toggleGameReady}
+                        disabled={iAmGameReady}
+                        className={`w-full py-3 rounded-xl font-bold transition-colors ${
+                          iAmGameReady
+                            ? "bg-slate-600 text-slate-400"
+                            : "bg-blue-600 hover:bg-blue-500"
+                        }`}
+                      >
+                        {iAmGameReady
+                          ? "Waiting for Host..."
+                          : "Ready for Next Game"}
+                      </button>
+                    )}
+
+                    {/* Exit Button for Everyone */}
                     <button
-                      onClick={toggleGameReady}
-                      disabled={iAmGameReady}
-                      className={`w-full py-3 rounded-xl font-bold transition-colors ${
-                        iAmGameReady
-                          ? "bg-slate-600 text-slate-400"
-                          : "bg-blue-600 hover:bg-blue-500"
-                      }`}
+                      onClick={leaveRoom}
+                      className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded-xl font-bold text-white border border-slate-500"
                     >
-                      {iAmGameReady
-                        ? "Waiting for Host..."
-                        : "Ready for Next Game"}
+                      Exit to Menu
                     </button>
-                  )}
+                  </div>
                 </div>
               )}
             </div>
           </div>
         )}
+
+        <PoliceLogo />
       </div>
     );
   }
@@ -1293,4 +1567,4 @@ export default function ThiefPoliceGame() {
     <div className="text-white text-center p-10">Loading Game Resources...</div>
   );
 }
-//fixed some color issues
+//final done
