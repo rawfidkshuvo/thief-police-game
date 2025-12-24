@@ -15,10 +15,6 @@ import {
   deleteDoc,
   onSnapshot,
   arrayUnion,
-  arrayRemove,
-  collection,
-  query,
-  where,
 } from "firebase/firestore";
 import {
   Crown,
@@ -28,13 +24,11 @@ import {
   Footprints,
   User,
   Trophy,
-  History,
   Play,
   LogOut,
   X,
   Bot,
   HelpCircle,
-  AlertTriangle,
   CheckCircle,
   RotateCcw,
   Trash2,
@@ -46,22 +40,19 @@ import {
 } from "lucide-react";
 
 // --- Firebase Config ---
-// FIXED: Use the environment configuration instead of hardcoded values to prevent auth errors
 const firebaseConfig = {
   apiKey: "AIzaSyBjIjK53vVJW1y5RaqEFGSFp0ECVDBEe1o",
   authDomain: "game-hub-ff8aa.firebaseapp.com",
   projectId: "game-hub-ff8aa",
   storageBucket: "game-hub-ff8aa.firebasestorage.app",
   messagingSenderId: "586559578902",
-  appId: "1:586559578902:web:20af4094771c23a46aa637"
+  appId: "1:586559578902:web:20af4094771c23a46aa637",
 };
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Use the environment app ID or a default
-const GAME_APP_ID =
-  typeof __app_id !== "undefined" ? __app_id : "police-hunt";
+const GAME_APP_ID = typeof __app_id !== "undefined" ? __app_id : "police-hunt";
 const GAME_ID = "3";
 
 // --- Constants ---
@@ -128,7 +119,6 @@ const shuffle = (array) => {
 
 // --- Sub-Components ---
 
-// UPDATED: Dark Blue/Slate Gradient Background
 const FloatingBackground = () => (
   <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
     <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900 via-blue-750 to-black" />
@@ -143,7 +133,6 @@ const FloatingBackground = () => (
   </div>
 );
 
-// UPDATED: Police Logo Footer
 const PoliceLogo = () => (
   <div className="flex items-center justify-center gap-1 opacity-40 mt-auto pb-2 pt-2 relative z-10">
     <Siren size={12} className="text-blue-500" />
@@ -153,7 +142,6 @@ const PoliceLogo = () => (
   </div>
 );
 
-// UPDATED: Exit Logic Modal
 const LeaveConfirmModal = ({
   onConfirmLeave,
   onConfirmLobby,
@@ -219,7 +207,6 @@ const GameGuideModal = ({ onClose }) => (
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 text-slate-300">
-        {/* Objective */}
         <div className="bg-slate-700/50 p-6 rounded-xl border border-slate-600">
           <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
             <Trophy className="text-yellow-500" size={24} /> The Objective
@@ -236,7 +223,6 @@ const GameGuideModal = ({ onClose }) => (
           </p>
         </div>
 
-        {/* Roles Grid */}
         <div>
           <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
             <User className="text-purple-400" size={24} /> The Roles
@@ -270,7 +256,6 @@ const GameGuideModal = ({ onClose }) => (
           </div>
         </div>
 
-        {/* Mechanics */}
         <div>
           <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
             <Siren className="text-blue-400" size={24} /> How It Works
@@ -321,7 +306,6 @@ const GameGuideModal = ({ onClose }) => (
   </div>
 );
 
-// --- Particle/Confetti Component ---
 const Confetti = ({ type = "gold" }) => {
   const [particles, setParticles] = useState([]);
 
@@ -336,8 +320,8 @@ const Confetti = ({ type = "gold" }) => {
     for (let i = 0; i < count; i++) {
       newParticles.push({
         id: i,
-        x: Math.random() * 100, // vw
-        y: -10, // start above
+        x: Math.random() * 100,
+        y: -10,
         color: colors[Math.floor(Math.random() * colors.length)],
         delay: Math.random() * 0.5,
         duration: 1 + Math.random() * 2,
@@ -417,6 +401,20 @@ export default function ThiefPoliceGame() {
     return () => unsubscribe();
   }, []);
 
+  // --- NEW: Restore Session ---
+  useEffect(() => {
+    if (user && view === "menu") {
+      const savedRoomId = localStorage.getItem("police_room_id");
+      const savedPlayerName = localStorage.getItem("police_player_name");
+
+      if (savedRoomId && savedPlayerName) {
+        setLoading(true);
+        setPlayerName(savedPlayerName);
+        setRoomId(savedRoomId);
+      }
+    }
+  }, [user, view]);
+
   useEffect(() => {
     if (!roomId || !user) return;
     const roomRef = doc(
@@ -438,7 +436,9 @@ export default function ThiefPoliceGame() {
         if (!amIInRoom) {
           setRoomId(null);
           setView("menu");
-          setError("The Station has been closed! (Room Deleted or Kicked)");
+          setError("You were removed from the Station.");
+          localStorage.removeItem("police_room_id");
+          localStorage.removeItem("police_player_name");
           return;
         }
 
@@ -452,10 +452,12 @@ export default function ThiefPoliceGame() {
         setRoomId(null);
         setView("menu");
         setError("The Station has been closed! (Room Deleted)");
+        localStorage.removeItem("police_room_id");
+        localStorage.removeItem("police_player_name");
       }
     });
     return () => unsubscribe();
-  }, [roomId, user, view]);
+  }, [roomId, user]);
 
   // --- Effects Logic ---
   useEffect(() => {
@@ -547,9 +549,6 @@ export default function ThiefPoliceGame() {
     }
   }, [gameState?.turnState, gameState?.readyPlayers?.length]);
 
-  // ... existing auth useEffect ...
-
-  // --- ADD THIS EFFECT ---
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "game_hub_settings", "config"), (doc) => {
       if (doc.exists()) {
@@ -564,7 +563,6 @@ export default function ThiefPoliceGame() {
     return () => unsub();
   }, []);
 
-  // --- ADD THIS BLOCK ---
   if (isMaintenance) {
     return (
       <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center text-white p-4 text-center">
@@ -578,10 +576,7 @@ export default function ThiefPoliceGame() {
             All units return to HQ. Shift change in progress.
           </p>
         </div>
-        {/* Add Spacing Between Boxes */}
         <div className="h-8"></div>
-
-        {/* Clickable Second Card */}
         <a href="https://rawfidkshuvo.github.io/gamehub/">
           <div className="flex items-center justify-center gap-3 mb-2">
             <div className="text-center pb-12 animate-pulse">
@@ -595,8 +590,6 @@ export default function ThiefPoliceGame() {
       </div>
     );
   }
-
-  // ... existing code: if (view === "menu") { ...
 
   // --- Actions ---
   const createRoom = async () => {
@@ -639,6 +632,11 @@ export default function ThiefPoliceGame() {
 
     try {
       await setDoc(roomRef, roomData);
+
+      // Save Session
+      localStorage.setItem("police_room_id", newRoomId);
+      localStorage.setItem("police_player_name", playerName);
+
       setRoomId(newRoomId);
       setLobbyRounds(25);
     } catch (e) {
@@ -664,7 +662,12 @@ export default function ThiefPoliceGame() {
       const snap = await getDoc(roomRef);
       if (!snap.exists()) throw new Error("Room not found.");
       const data = snap.data();
-      if (data.players.length >= 4) throw new Error("Room full.");
+      if (data.players.length >= 4) {
+        // Allow rejoin if already in list
+        if (!data.players.some((p) => p.id === user.uid)) {
+          throw new Error("Room full.");
+        }
+      }
 
       const exists = data.players.find((p) => p.id === user.uid);
       if (!exists) {
@@ -679,6 +682,11 @@ export default function ThiefPoliceGame() {
           }),
         });
       }
+
+      // Save Session
+      localStorage.setItem("police_room_id", roomCode);
+      localStorage.setItem("police_player_name", playerName);
+
       setRoomId(roomCode);
     } catch (e) {
       setError(e.message);
@@ -686,7 +694,6 @@ export default function ThiefPoliceGame() {
     setLoading(false);
   };
 
-  // UPDATED: Logic for Leaving
   const leaveRoom = async () => {
     if (!roomId || !user) return;
     try {
@@ -706,13 +713,8 @@ export default function ThiefPoliceGame() {
         const isHost = data.hostId === user.uid;
 
         if (isHost) {
-          // If Host leaves, destroy the room (Lobby behavior)
-          if (data.status === "lobby") {
-            await deleteDoc(roomRef);
-          } else {
-            // In Game: Handle Abandon
-            await handleGameAbandon(roomRef, data);
-          }
+          // If Host leaves, destroy the room completely
+          await deleteDoc(roomRef);
         } else {
           // Guest Logic
           if (data.status === "lobby") {
@@ -721,7 +723,7 @@ export default function ThiefPoliceGame() {
             );
             await updateDoc(roomRef, { players: updatedPlayers });
           } else {
-            // In Game: Guest leaves, end game for everyone (as per instructions)
+            // In Game: Guest leaves, trigger finish for everyone logic
             await handleGameAbandon(roomRef, data);
           }
         }
@@ -729,46 +731,21 @@ export default function ThiefPoliceGame() {
     } catch (e) {
       console.error(e);
     }
+    // Clear Session
+    localStorage.removeItem("police_room_id");
+    localStorage.removeItem("police_player_name");
+
     setRoomId(null);
     setView("menu");
     setShowLeaveConfirm(false);
   };
 
   const handleGameAbandon = async (roomRef, data) => {
-    // Trigger "Finished" state so modals pop up for everyone
-    const remainingPlayers = data.players.filter((p) => p.id !== user.uid);
-
-    // If anyone leaves, the game ends. Winners are the remaining ones.
-    // Note: This simplifies "Scoreboard" logic since scoreboard handles winners.
-
+    // If anyone leaves during game, game ends.
     await updateDoc(roomRef, {
       status: "finished",
       players: data.players.filter((p) => p.id !== user.uid), // Remove the leaver
     });
-  };
-
-  const resetToLobby = async () => {
-    if (!gameState || gameState.hostId !== user.uid) return;
-    const resetPlayers = gameState.players.map((p) => ({
-      ...p,
-      totalScore: 0,
-      currentRole: null,
-      roundScore: 0,
-    }));
-    await updateDoc(
-      doc(db, "artifacts", GAME_APP_ID, "public", "data", "rooms", roomId),
-      {
-        gameInstanceId: Date.now(),
-        currentRound: 0,
-        status: "lobby",
-        players: resetPlayers,
-        roundHistory: [],
-        readyPlayers: [],
-        gameReadyPlayers: [],
-        turnState: "IDLE",
-      }
-    );
-    setShowLeaveConfirm(false);
   };
 
   const kickPlayer = async (targetId) => {
@@ -792,6 +769,33 @@ export default function ThiefPoliceGame() {
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const resetToLobby = async () => {
+    if (!gameState || gameState.hostId !== user.uid) return;
+
+    // Reset players logic
+    const resetPlayers = gameState.players.map((p) => ({
+      ...p,
+      totalScore: 0,
+      currentRole: null,
+      roundScore: 0,
+    }));
+
+    await updateDoc(
+      doc(db, "artifacts", GAME_APP_ID, "public", "data", "rooms", roomId),
+      {
+        gameInstanceId: Date.now(),
+        currentRound: 0,
+        status: "lobby",
+        players: resetPlayers,
+        roundHistory: [],
+        readyPlayers: [],
+        gameReadyPlayers: [],
+        turnState: "IDLE",
+      }
+    );
+    setShowLeaveConfirm(false);
   };
 
   const updateRounds = async () => {
@@ -823,23 +827,6 @@ export default function ThiefPoliceGame() {
     if (!gameState.readyPlayers?.includes(user.uid)) {
       await updateDoc(roomRef, {
         readyPlayers: arrayUnion(user.uid),
-      });
-    }
-  };
-
-  const toggleGameReady = async () => {
-    const roomRef = doc(
-      db,
-      "artifacts",
-      GAME_APP_ID,
-      "public",
-      "data",
-      "rooms",
-      roomId
-    );
-    if (!gameState.gameReadyPlayers?.includes(user.uid)) {
-      await updateDoc(roomRef, {
-        gameReadyPlayers: arrayUnion(user.uid),
       });
     }
   };
@@ -1139,10 +1126,11 @@ export default function ThiefPoliceGame() {
                     {p.name} {p.id === gameState.hostId && "👑"}
                   </span>
                 </div>
+                {/* Trash Icon for Host to Kick Players */}
                 {gameState.hostId === user.uid && p.id !== user.uid && (
                   <button
                     onClick={() => kickPlayer(p.id)}
-                    className="text-slate-500 hover:text-red-500 transition-colors p-1"
+                    className="p-2 hover:bg-red-900/50 rounded text-red-400 transition-colors"
                     title="Kick Player"
                   >
                     <Trash2 size={16} />
@@ -1192,11 +1180,6 @@ export default function ThiefPoliceGame() {
     const humanCount = gameState.players.filter((p) => !p.isBot).length;
     const voteCount = gameState.readyPlayers?.length || 0;
     const isHost = gameState.hostId === user.uid;
-
-    // Game Ready (Play Again) Stats
-    const iAmGameReady = gameState.gameReadyPlayers?.includes(user.uid);
-    const gameReadyCount = gameState.gameReadyPlayers?.length || 0;
-    const otherHumanCount = humanCount - 1;
 
     return (
       <div
@@ -1538,7 +1521,6 @@ export default function ThiefPoliceGame() {
                         {h.winner} Won
                       </span>
                     </div>
-                    {/* RESTORED DETAILED BREAKDOWN */}
                     <div className="grid grid-cols-4 gap-1">
                       {h.scores.map((s, idx) => (
                         <div
@@ -1569,34 +1551,14 @@ export default function ThiefPoliceGame() {
                     {gameState.hostId === user.uid ? (
                       <button
                         onClick={restartGame}
-                        disabled={gameReadyCount < otherHumanCount}
-                        className="w-full bg-green-600 hover:bg-green-500 disabled:bg-slate-600 disabled:text-slate-400 py-3 rounded-xl font-bold flex items-center justify-center gap-2 text-lg shadow-lg"
+                        className="w-full bg-green-600 hover:bg-green-500 py-3 rounded-xl font-bold flex items-center justify-center gap-2 text-lg shadow-lg"
                       >
-                        {gameReadyCount < otherHumanCount ? (
-                          <>
-                            <RotateCcw className="animate-spin" /> Waiting for
-                            Players ({gameReadyCount}/{otherHumanCount})
-                          </>
-                        ) : (
-                          <>
-                            <RotateCcw /> Play Again
-                          </>
-                        )}
+                        <RotateCcw /> Play Again
                       </button>
                     ) : (
-                      <button
-                        onClick={toggleGameReady}
-                        disabled={iAmGameReady}
-                        className={`w-full py-3 rounded-xl font-bold transition-colors ${
-                          iAmGameReady
-                            ? "bg-slate-600 text-slate-400"
-                            : "bg-blue-600 hover:bg-blue-500"
-                        }`}
-                      >
-                        {iAmGameReady
-                          ? "Waiting for Host..."
-                          : "Ready for Next Game"}
-                      </button>
+                      <div className="text-center text-slate-400 italic">
+                        Waiting for Host to restart...
+                      </div>
                     )}
 
                     {/* Exit Button for Everyone */}
@@ -1622,4 +1584,3 @@ export default function ThiefPoliceGame() {
     <div className="text-white text-center p-10">Loading Game Resources...</div>
   );
 }
-//final done
