@@ -135,8 +135,17 @@ const FloatingBackground = () => (
 
 const PoliceLogo = () => (
   <div className="flex items-center justify-center gap-1 opacity-40 mt-auto pb-2 pt-2 relative z-10">
-    <Siren size={12} className="text-blue-500" />
+    <Siren size={12} className="text-red-500" />
     <span className="text-[10px] font-black tracking-widest text-blue-500 uppercase">
+      POLICE HUNT
+    </span>
+  </div>
+);
+
+const PoliceLogoBig = () => (
+  <div className="flex items-center justify-center gap-1 opacity-40 mt-auto pb-2 pt-2 relative z-10">
+    <Siren size={22} className="text-red-500" />
+    <span className="text-[20px] font-black tracking-widest text-blue-500 uppercase">
       POLICE HUNT
     </span>
   </div>
@@ -1028,7 +1037,7 @@ export default function ThiefPoliceGame() {
             onClick={() => setShowGuide(true)}
             className="w-full mt-4 text-sm text-slate-400 hover:text-white flex items-center justify-center gap-2 py-2 transition-colors"
           >
-            <BookOpen size={16} /> How to Play
+            <BookOpen size={16} /> Penal Codes
           </button>
         </div>
         <div className="absolute bottom-4 text-slate-600 text-xs text-center">
@@ -1054,6 +1063,7 @@ export default function ThiefPoliceGame() {
     return (
       <div className="min-h-screen bg-slate-900 text-white p-4 flex flex-col items-center relative overflow-hidden">
         <FloatingBackground />
+        <PoliceLogoBig />
         {showLeaveConfirm && (
           <LeaveConfirmModal
             onConfirmLeave={leaveRoom}
