@@ -121,7 +121,7 @@ const shuffle = (array) => {
 
 const FloatingBackground = () => (
   <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-    <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900 via-blue-750 to-black" />
+    <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,var(--tw-gradient-stops))] from-slate-900 via-blue-750 to-black" />
     <div className="absolute top-0 left-0 w-full h-full bg-blue-500/5 mix-blend-overlay" />
     <div
       className="absolute inset-0 opacity-10"
@@ -158,7 +158,7 @@ const LeaveConfirmModal = ({
   isHost,
   inGame,
 }) => (
-  <div className="fixed inset-0 bg-black/90 z-[200] flex items-center justify-center p-4 animate-in fade-in">
+  <div className="fixed inset-0 bg-black/90 z-200 flex items-center justify-center p-4 animate-in fade-in">
     <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 max-w-sm w-full text-center shadow-2xl">
       <h3 className="text-xl font-bold text-white mb-2">Depart Station?</h3>
       <p className="text-slate-400 mb-6 text-sm">
@@ -196,11 +196,11 @@ const LeaveConfirmModal = ({
 );
 
 const GameGuideModal = ({ onClose }) => (
-  <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-0 md:p-4 backdrop-blur-md animate-in fade-in">
+  <div className="fixed inset-0 bg-black/95 z-100 flex items-center justify-center p-0 md:p-4 backdrop-blur-md animate-in fade-in">
     <div className="bg-slate-800 md:rounded-2xl w-full max-w-4xl h-full md:h-auto max-h-[90vh] overflow-hidden border-none md:border border-slate-600 shadow-2xl flex flex-col relative">
       <div className="p-4 md:p-6 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
         <div className="flex flex-col">
-          <h2 className="text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-700 to-blue-600 uppercase tracking-widest">
+          <h2 className="text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-linear-to-r from-red-700 to-blue-600 uppercase tracking-widest">
             Game Rules
           </h2>
           <span className="text-slate-400 text-xs md:text-sm font-bold tracking-wide">
@@ -988,7 +988,7 @@ export default function ThiefPoliceGame() {
             size={64}
             className="text-red-700 mx-auto mb-4 animate-bounce drop-shadow-[0_0_15px_rgba(59,130,246,0.5)]"
           />
-          <h1 className="text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-red-700 to-blue-600 font-serif tracking-widest drop-shadow-md">
+          <h1 className="text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-linear-to-b from-red-700 to-blue-600 font-serif tracking-widest drop-shadow-md">
             POLICE HUNT
           </h1>
           <p className="text-slate-400 tracking-[0.3em] uppercase mt-2 font-bold">
@@ -1012,7 +1012,7 @@ export default function ThiefPoliceGame() {
           <button
             onClick={createRoom}
             disabled={loading}
-            className="w-full bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 p-4 rounded-xl font-bold mb-4 flex items-center justify-center gap-2 border border-yellow-500/30 shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all text-black"
+            className="w-full bg-linear-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 p-4 rounded-xl font-bold mb-4 flex items-center justify-center gap-2 border border-yellow-500/30 shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all text-black"
           >
             <Siren size={20} /> Generate Crime Scene
           </button>
@@ -1358,7 +1358,7 @@ export default function ThiefPoliceGame() {
                   key={p.id}
                   onClick={() => (canSelect ? handlePoliceGuess(p.id) : null)}
                   className={`
-                                relative p-4 rounded-xl border-2 flex flex-col items-center justify-center aspect-[3/4] transition-all backdrop-blur-sm
+                                relative p-4 rounded-xl border-2 flex flex-col items-center justify-center aspect-3/4 transition-all backdrop-blur-sm
                                 ${
                                   isMe
                                     ? "bg-slate-800/90 shadow-[0_0_20px_rgba(6,182,212,0.4)] border-green-400 ring-2 ring-cyan-400/30 transform scale-105 z-10"
@@ -1463,7 +1463,7 @@ export default function ThiefPoliceGame() {
                   <>
                     {/* Winner Banner */}
                     {gameState.status === "finished" && (
-                      <div className="bg-gradient-to-r from-yellow-600 to-yellow-800 p-4 text-center">
+                      <div className="bg-linear-to-r from-yellow-600 to-yellow-800 p-4 text-center">
                         <div className="text-sm font-bold text-yellow-200 uppercase tracking-widest">
                           {isTie ? "Champions" : "Champion"}
                         </div>
