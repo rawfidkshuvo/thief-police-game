@@ -1366,7 +1366,7 @@ export default function ThiefPoliceGame() {
                                 }
                                 ${
                                   canSelect
-                                    ? "cursor-pointer hover:scale-105 border-red-400 bg-red-900/20 shadow-[0_0_15px_rgba(59,130,246,0.5)]"
+                                    ? "cursor-pointer hover:scale-105 border-red-400 bg-red-900/20 shadow-[0_0_15px_rgba(248,113,113,0.5)]"
                                     : ""
                                 }
                             `}
