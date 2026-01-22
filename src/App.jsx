@@ -374,7 +374,9 @@ const Confetti = ({ type = "gold" }) => {
 export default function ThiefPoliceGame() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState("menu");
-  const [playerName, setPlayerName] = useState("");
+  const [playerName, setPlayerName] = useState(
+    () => localStorage.getItem("police_player_name") || ""
+  );
   const [roomCode, setRoomCode] = useState("");
   const [roomId, setRoomId] = useState(null);
   const [gameState, setGameState] = useState(null);
@@ -447,7 +449,6 @@ export default function ThiefPoliceGame() {
           setView("menu");
           setError("You were removed from the Station.");
           localStorage.removeItem("police_room_id");
-          localStorage.removeItem("police_player_name");
           return;
         }
 
@@ -462,7 +463,6 @@ export default function ThiefPoliceGame() {
         setView("menu");
         setError("The Station has been closed! (Room Deleted)");
         localStorage.removeItem("police_room_id");
-        localStorage.removeItem("police_player_name");
       }
     });
     return () => unsubscribe();
@@ -742,7 +742,6 @@ export default function ThiefPoliceGame() {
     }
     // Clear Session
     localStorage.removeItem("police_room_id");
-    localStorage.removeItem("police_player_name");
 
     setRoomId(null);
     setView("menu");
