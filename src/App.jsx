@@ -374,9 +374,7 @@ const Confetti = ({ type = "gold" }) => {
 export default function ThiefPoliceGame() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState("menu");
-  const [playerName, setPlayerName] = useState(
-    () => localStorage.getItem("police_player_name") || ""
-  );
+  
   const [roomCode, setRoomCode] = useState("");
   const [roomId, setRoomId] = useState(null);
   const [gameState, setGameState] = useState(null);
@@ -397,6 +395,15 @@ export default function ThiefPoliceGame() {
   const [showConfetti, setShowConfetti] = useState(false);
   const [showKingEffect, setShowKingEffect] = useState(false);
   const [shakeScreen, setShakeScreen] = useState(false);
+
+  //read and fill global name
+  const [playerName, setPlayerName] = useState(
+    () => localStorage.getItem("gameHub_playerName") || ""
+  );
+  //set global name for all game
+  useEffect(() => {
+    if (playerName) localStorage.setItem("gameHub_playerName", playerName);
+  }, [playerName]);
 
   // --- Auth & Sync ---
   useEffect(() => {
