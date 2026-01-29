@@ -415,6 +415,7 @@ export default function ThiefPoliceGame() {
   const [showScoreboard, setShowScoreboard] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [isMaintenance, setIsMaintenance] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
 
   // Lobby Rounds State
   const [lobbyRounds, setLobbyRounds] = useState(25);
@@ -822,17 +823,30 @@ export default function ThiefPoliceGame() {
   };
 
   const copyToClipboard = () => {
+    const textToCopy = roomId;
+
+    // Logic to show the popup and hide it after 2 seconds
+    const handleSuccess = () => {
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+
+      // Keep your existing global feedback if needed
+      if (triggerFeedback)
+        triggerFeedback("neutral", "COPIED!", "", CheckCircle);
+    };
+
     try {
-      navigator.clipboard.writeText(roomId);
-      triggerFeedback("neutral", "COPIED!", "", CheckCircle);
+      navigator.clipboard.writeText(textToCopy);
+      handleSuccess();
     } catch (e) {
+      // Fallback for older browsers
       const el = document.createElement("textarea");
-      el.value = roomId;
+      el.value = textToCopy;
       document.body.appendChild(el);
       el.select();
       document.execCommand("copy");
       document.body.removeChild(el);
-      triggerFeedback("neutral", "COPIED!", "", CheckCircle);
+      handleSuccess();
     }
   };
 
@@ -1135,18 +1149,39 @@ export default function ThiefPoliceGame() {
         <div className="w-full max-w-lg z-10 bg-slate-800/90 p-8 rounded-2xl border border-slate-700 shadow-2xl mb-4">
           <div className="flex justify-between items-center mb-8 border-b border-slate-700 pb-4">
             {/* Grouping Title and Copy Button together on the left */}
-            <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-bold font-serif text-blue-400">
-                Station:{" "}
-                <span className="text-white font-mono">{gameState.id}</span>
+            <div>
+              <h2 className="text-lg md:text-xl text-red-500 font-bold uppercase">
+                Station
               </h2>
-              <button
-                onClick={copyToClipboard}
-                className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white"
-                title="Copy Room ID"
-              >
-                <Copy size={16} />
-              </button>
+
+              {/* Flex container to align ID and Button side-by-side */}
+              <div className="flex items-center gap-3 mt-1">
+                <div className="text-2xl md:text-3xl font-mono text-white font-black">
+                  {gameState.id}
+                </div>
+
+                {/* 2. Container set to relative for positioning the popup */}
+                <div className="relative">
+                  <button
+                    onClick={copyToClipboard}
+                    className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white"
+                  >
+                    {/* Optional: Change icon to checkmark when copied */}
+                    {isCopied ? (
+                      <CheckCircle size={16} className="text-green-500" />
+                    ) : (
+                      <Copy size={16} />
+                    )}
+                  </button>
+
+                  {/* 3. The Copied Popup */}
+                  {isCopied && (
+                    <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-green-500 text-black text-xs font-bold px-2 py-1 rounded shadow-lg animate-fade-in-up whitespace-nowrap">
+                      Copied!
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
             <button
               onClick={() => setShowLeaveConfirm(true)}
