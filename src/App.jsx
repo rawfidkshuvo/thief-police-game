@@ -37,6 +37,7 @@ import {
   Home,
   Hammer,
   Sparkles,
+  Copy,
 } from "lucide-react";
 
 // --- Firebase Config ---
@@ -46,13 +47,14 @@ const firebaseConfig = {
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const GAME_APP_ID = typeof __app_id !== "undefined" ? __app_id : "police-hunt-game";
+const GAME_APP_ID =
+  typeof __app_id !== "undefined" ? __app_id : "police-hunt-game";
 const GAME_ID = "3";
 
 // --- Constants ---
@@ -404,7 +406,7 @@ const Confetti = ({ type = "gold" }) => {
 export default function ThiefPoliceGame() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState("menu");
-  
+
   const [roomCode, setRoomCode] = useState("");
   const [roomId, setRoomId] = useState(null);
   const [gameState, setGameState] = useState(null);
@@ -428,7 +430,7 @@ export default function ThiefPoliceGame() {
 
   //read and fill global name
   const [playerName, setPlayerName] = useState(
-    () => localStorage.getItem("gameHub_playerName") || ""
+    () => localStorage.getItem("gameHub_playerName") || "",
   );
   //set global name for all game
   useEffect(() => {
@@ -472,7 +474,7 @@ export default function ThiefPoliceGame() {
       "public",
       "data",
       "rooms",
-      roomId
+      roomId,
     );
 
     const unsubscribe = onSnapshot(roomRef, (docSnap) => {
@@ -571,12 +573,12 @@ export default function ThiefPoliceGame() {
     // 1. Bot Guessing Logic
     if (gameState.turnState === "GUESSING") {
       const policePlayer = gameState.players.find(
-        (p) => p.currentRole === "POLICE"
+        (p) => p.currentRole === "POLICE",
       );
       if (policePlayer && policePlayer.isBot) {
         const timer = setTimeout(() => {
           const validTargets = gameState.players.filter(
-            (p) => p.id !== policePlayer.id && p.currentRole !== "KING"
+            (p) => p.id !== policePlayer.id && p.currentRole !== "KING",
           );
           const randomTarget =
             validTargets[Math.floor(Math.random() * validTargets.length)];
@@ -651,7 +653,7 @@ export default function ThiefPoliceGame() {
       "public",
       "data",
       "rooms",
-      newRoomId
+      newRoomId,
     );
 
     const roomData = {
@@ -704,7 +706,7 @@ export default function ThiefPoliceGame() {
       "public",
       "data",
       "rooms",
-      roomCode
+      roomCode,
     );
     try {
       const snap = await getDoc(roomRef);
@@ -752,7 +754,7 @@ export default function ThiefPoliceGame() {
         "public",
         "data",
         "rooms",
-        roomId
+        roomId,
       );
       const docSnap = await getDoc(roomRef);
       if (docSnap.exists()) {
@@ -767,7 +769,7 @@ export default function ThiefPoliceGame() {
           // Guest Logic
           if (data.status === "lobby") {
             const updatedPlayers = data.players.filter(
-              (p) => p.id !== user.uid
+              (p) => p.id !== user.uid,
             );
             await updateDoc(roomRef, { players: updatedPlayers });
           } else {
@@ -806,7 +808,7 @@ export default function ThiefPoliceGame() {
         "public",
         "data",
         "rooms",
-        roomId
+        roomId,
       );
       const docSnap = await getDoc(roomRef);
       if (docSnap.exists()) {
@@ -816,6 +818,21 @@ export default function ThiefPoliceGame() {
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const copyToClipboard = () => {
+    try {
+      navigator.clipboard.writeText(roomId);
+      triggerFeedback("neutral", "COPIED!", "", CheckCircle);
+    } catch (e) {
+      const el = document.createElement("textarea");
+      el.value = roomId;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+      triggerFeedback("neutral", "COPIED!", "", CheckCircle);
     }
   };
 
@@ -841,7 +858,7 @@ export default function ThiefPoliceGame() {
         readyPlayers: [],
         gameReadyPlayers: [],
         turnState: "IDLE",
-      }
+      },
     );
     setShowLeaveConfirm(false);
   };
@@ -858,7 +875,7 @@ export default function ThiefPoliceGame() {
       doc(db, "artifacts", GAME_APP_ID, "public", "data", "rooms", roomId),
       {
         maxRounds: val,
-      }
+      },
     );
   };
 
@@ -870,7 +887,7 @@ export default function ThiefPoliceGame() {
       "public",
       "data",
       "rooms",
-      roomId
+      roomId,
     );
     if (!gameState.readyPlayers?.includes(user.uid)) {
       await updateDoc(roomRef, {
@@ -885,7 +902,7 @@ export default function ThiefPoliceGame() {
         doc(db, "artifacts", GAME_APP_ID, "public", "data", "rooms", roomId),
         {
           status: "finished",
-        }
+        },
       );
       return;
     }
@@ -911,7 +928,7 @@ export default function ThiefPoliceGame() {
         players: updatedPlayers,
         readyPlayers: [],
         lastRoundResult: null,
-      }
+      },
     );
   };
 
@@ -965,7 +982,7 @@ export default function ThiefPoliceGame() {
         turnState: "RESULT",
         lastRoundResult: resultMsg,
         roundHistory: arrayUnion(historyEntry),
-      }
+      },
     );
   };
 
@@ -987,7 +1004,7 @@ export default function ThiefPoliceGame() {
         readyPlayers: [],
         gameReadyPlayers: [], // Reset Ready state
         turnState: "IDLE",
-      }
+      },
     );
   };
 
@@ -1010,7 +1027,7 @@ export default function ThiefPoliceGame() {
           currentRole: null,
           roundScore: 0,
         }),
-      }
+      },
     );
   };
 
@@ -1117,10 +1134,20 @@ export default function ThiefPoliceGame() {
         )}
         <div className="w-full max-w-lg z-10 bg-slate-800/90 p-8 rounded-2xl border border-slate-700 shadow-2xl mb-4">
           <div className="flex justify-between items-center mb-8 border-b border-slate-700 pb-4">
-            <h2 className="text-2xl font-bold font-serif text-blue-400">
-              Station:{" "}
-              <span className="text-white font-mono">{gameState.id}</span>
-            </h2>
+            {/* Grouping Title and Copy Button together on the left */}
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-bold font-serif text-blue-400">
+                Station:{" "}
+                <span className="text-white font-mono">{gameState.id}</span>
+              </h2>
+              <button
+                onClick={copyToClipboard}
+                className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white"
+                title="Copy Room ID"
+              >
+                <Copy size={16} />
+              </button>
+            </div>
             <button
               onClick={() => setShowLeaveConfirm(true)}
               className="bg-slate-700 p-2 rounded hover:bg-red-900/50 hover:text-red-400 transition-colors"
@@ -1236,7 +1263,7 @@ export default function ThiefPoliceGame() {
     if (!me) return null;
 
     const currentPolice = gameState.players.find(
-      (p) => p.currentRole === "POLICE"
+      (p) => p.currentRole === "POLICE",
     );
     const isPolice = me.currentRole === "POLICE";
     const iHaveVoted = gameState.readyPlayers?.includes(user.uid);
@@ -1490,11 +1517,11 @@ export default function ThiefPoliceGame() {
               {/* Calculate Winners */}
               {(() => {
                 const sortedPlayers = [...gameState.players].sort(
-                  (a, b) => b.totalScore - a.totalScore
+                  (a, b) => b.totalScore - a.totalScore,
                 );
                 const topScore = sortedPlayers[0]?.totalScore || 0;
                 const winners = sortedPlayers.filter(
-                  (p) => p.totalScore === topScore
+                  (p) => p.totalScore === topScore,
                 );
                 const isTie = winners.length > 1;
 
