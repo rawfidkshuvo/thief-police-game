@@ -1154,7 +1154,7 @@ export default function ThiefPoliceGame() {
           <div className="flex justify-between items-center mb-8 border-b border-slate-700 pb-4">
             {/* Grouping Title and Copy Button together on the left */}
             <div>
-              <h2 className="text-lg md:text-xl text-red-500 font-bold uppercase">
+              <h2 className="text-lg md:text-xl text-blue-500 font-bold uppercase">
                 Station
               </h2>
 
@@ -1180,7 +1180,7 @@ export default function ThiefPoliceGame() {
 
                   {/* 3. The Copied Popup */}
                   {isCopied && (
-                    <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-green-500 text-black text-xs font-bold px-2 py-1 rounded shadow-lg animate-fade-in-up whitespace-nowrap">
+                    <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-blue-500 text-black text-xs font-bold px-2 py-1 rounded shadow-lg animate-fade-in-up whitespace-nowrap">
                       Copied!
                     </div>
                   )}
